@@ -49,6 +49,7 @@ func (s *Store) migrate() error {
 			sort_order   INTEGER NOT NULL DEFAULT 0,
 			hidden       INTEGER NOT NULL DEFAULT 0,
 			note         TEXT NOT NULL DEFAULT '',
+			expires_at   INTEGER NOT NULL DEFAULT 0,
 			created_at   INTEGER NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS metrics_minute (
@@ -158,5 +159,7 @@ func (s *Store) migrate() error {
 			return fmt.Errorf("migrate: %w", err)
 		}
 	}
+	// 旧库补列：列已存在时报错可安全忽略。
+	_, _ = s.db.Exec(`ALTER TABLE servers ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0`)
 	return nil
 }

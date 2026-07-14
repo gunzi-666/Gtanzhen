@@ -16,6 +16,7 @@ type Server struct {
 	SortOrder int    `json:"sort_order"`
 	Hidden    bool   `json:"hidden"`
 	Note      string `json:"note"`
+	ExpiresAt int64  `json:"expires_at"` // 到期时间（unix 秒），0 表示未设置
 	CreatedAt int64  `json:"created_at"`
 }
 
@@ -51,7 +52,7 @@ func (s *Store) CreateServer(name, note string) (*Server, error) {
 
 // ListServers 返回所有服务器（按 sort_order, id）。
 func (s *Store) ListServers() ([]Server, error) {
-	rows, err := s.db.Query(`SELECT id,name,secret,sort_order,hidden,note,created_at FROM servers ORDER BY sort_order, id`)
+	rows, err := s.db.Query(`SELECT id,name,secret,sort_order,hidden,note,expires_at,created_at FROM servers ORDER BY sort_order, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +61,7 @@ func (s *Store) ListServers() ([]Server, error) {
 	for rows.Next() {
 		var srv Server
 		var hidden int
-		if err := rows.Scan(&srv.ID, &srv.Name, &srv.Secret, &srv.SortOrder, &hidden, &srv.Note, &srv.CreatedAt); err != nil {
+		if err := rows.Scan(&srv.ID, &srv.Name, &srv.Secret, &srv.SortOrder, &hidden, &srv.Note, &srv.ExpiresAt, &srv.CreatedAt); err != nil {
 			return nil, err
 		}
 		srv.Hidden = hidden == 1
@@ -69,15 +70,15 @@ func (s *Store) ListServers() ([]Server, error) {
 	return out, rows.Err()
 }
 
-// UpdateServer 更新名称、备注、排序、隐藏。
-func (s *Store) UpdateServer(id uint64, name, note string, sortOrder int, hidden bool) error {
+// UpdateServer 更新名称、备注、排序、隐藏、到期时间。
+func (s *Store) UpdateServer(id uint64, name, note string, sortOrder int, hidden bool, expiresAt int64) error {
 	h := 0
 	if hidden {
 		h = 1
 	}
 	res, err := s.db.Exec(
-		`UPDATE servers SET name=?, note=?, sort_order=?, hidden=? WHERE id=?`,
-		name, note, sortOrder, h, id,
+		`UPDATE servers SET name=?, note=?, sort_order=?, hidden=?, expires_at=? WHERE id=?`,
+		name, note, sortOrder, h, expiresAt, id,
 	)
 	if err != nil {
 		return err

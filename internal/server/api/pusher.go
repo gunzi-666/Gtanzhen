@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"probe/internal/server/hub"
-
 	"github.com/gorilla/websocket"
 )
 
@@ -15,9 +13,10 @@ var browserUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// pusher 把 Hub 的实时状态以固定节流推送给所有浏览器订阅者。
+// pusher 把精简后的公开状态以固定节流推送给所有浏览器订阅者。
+// 数据构建复用 API.publicServers，与 REST 接口暴露的字段严格一致。
 type pusher struct {
-	hub     *hub.Hub
+	api     *API
 	mu      sync.RWMutex
 	clients map[*browserClient]struct{}
 }
@@ -27,8 +26,17 @@ type browserClient struct {
 	send chan []byte
 }
 
-func newPusher(h *hub.Hub) *pusher {
-	return &pusher{hub: h, clients: make(map[*browserClient]struct{})}
+func newPusher(a *API) *pusher {
+	return &pusher{api: a, clients: make(map[*browserClient]struct{})}
+}
+
+// frame 构建一帧推送数据。
+func (p *pusher) frame() ([]byte, error) {
+	states, err := p.api.publicServers()
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(map[string]any{"type": "servers", "data": states})
 }
 
 // start 启动 3 秒节流的广播循环。
@@ -49,8 +57,7 @@ func (p *pusher) broadcast() {
 	if n == 0 {
 		return
 	}
-	states := p.hub.Snapshot()
-	data, err := json.Marshal(map[string]any{"type": "servers", "data": states})
+	data, err := p.frame()
 	if err != nil {
 		return
 	}
@@ -76,7 +83,7 @@ func (p *pusher) handle(w http.ResponseWriter, r *http.Request) {
 	p.mu.Unlock()
 
 	// 连接建立后立即推一帧。
-	if data, err := json.Marshal(map[string]any{"type": "servers", "data": p.hub.Snapshot()}); err == nil {
+	if data, err := p.frame(); err == nil {
 		c.send <- data
 	}
 

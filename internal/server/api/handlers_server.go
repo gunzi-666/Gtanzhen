@@ -7,38 +7,76 @@ import (
 	"time"
 )
 
-// publicServer 是状态页展示用的精简结构（隐藏 secret）。
-type publicServer struct {
-	ID          uint64 `json:"id"`
-	Name        string `json:"name"`
-	Online      bool   `json:"online"`
-	LastSeen    int64  `json:"last_seen"`
-	Host        any    `json:"host,omitempty"`
-	Metrics     any    `json:"metrics,omitempty"`
-	Note        string `json:"note,omitempty"`
-	TrafficIn   uint64 `json:"traffic_in"`  // 当月入站累计字节
-	TrafficOut  uint64 `json:"traffic_out"` // 当月出站累计字节
+// publicHost 是对公开状态页暴露的主机信息子集。
+// 刻意不包含 hostname、内核版本、系统小版本、虚拟化等敏感/无用细节。
+type publicHost struct {
+	Platform  string   `json:"platform"`
+	Arch      string   `json:"arch"`
+	CPU       []string `json:"cpu,omitempty"`
+	MemTotal  uint64   `json:"mem_total"`
+	DiskTotal uint64   `json:"disk_total"`
 }
 
-// handlePublicServers 返回状态页数据（合并 DB 登记与 Hub 实时态，过滤隐藏项）。
-func (a *API) handlePublicServers(w http.ResponseWriter, r *http.Request) {
+// publicMetrics 是对公开状态页暴露的实时指标子集。
+type publicMetrics struct {
+	CPU          float64 `json:"cpu"`
+	MemUsed      uint64  `json:"mem_used"`
+	DiskUsed     uint64  `json:"disk_used"`
+	NetInSpeed   uint64  `json:"net_in_speed"`
+	NetOutSpeed  uint64  `json:"net_out_speed"`
+	Load1        float64 `json:"load1"`
+	Uptime       uint64  `json:"uptime"`
+	ProcessCount uint64  `json:"process_count"`
+	TCPConnCount uint64  `json:"tcp_conn_count"`
+}
+
+// publicServer 是状态页展示用的精简结构（不含 secret / note 等管理字段）。
+type publicServer struct {
+	ID         uint64         `json:"id"`
+	Name       string         `json:"name"`
+	Online     bool           `json:"online"`
+	LastSeen   int64          `json:"last_seen"`
+	Host       *publicHost    `json:"host,omitempty"`
+	Metrics    *publicMetrics `json:"metrics,omitempty"`
+	TrafficIn  uint64         `json:"traffic_in"`  // 当月入站累计字节
+	TrafficOut uint64         `json:"traffic_out"` // 当月出站累计字节
+}
+
+// publicServers 构建公开状态数据（合并 DB 登记与 Hub 实时态，过滤隐藏项）。
+// REST 接口与浏览器 WebSocket 推送共用，保证两条通道暴露的字段一致。
+func (a *API) publicServers() ([]publicServer, error) {
 	servers, err := a.deps.Store.ListServers()
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return nil, err
 	}
-	stateByID := map[uint64]any{}
+	metricsByID := map[uint64]*publicMetrics{}
 	onlineByID := map[uint64]bool{}
 	lastSeenByID := map[uint64]int64{}
-	hostByID := map[uint64]any{}
+	hostByID := map[uint64]*publicHost{}
 	for _, st := range a.deps.Hub.Snapshot() {
 		onlineByID[st.ServerID] = st.Online
 		lastSeenByID[st.ServerID] = st.LastSeen.Unix()
-		if st.Metrics != nil {
-			stateByID[st.ServerID] = st.Metrics
+		if m := st.Metrics; m != nil {
+			metricsByID[st.ServerID] = &publicMetrics{
+				CPU:          m.CPU,
+				MemUsed:      m.MemUsed,
+				DiskUsed:     m.DiskUsed,
+				NetInSpeed:   m.NetInSpeed,
+				NetOutSpeed:  m.NetOutSpeed,
+				Load1:        m.Load1,
+				Uptime:       m.Uptime,
+				ProcessCount: m.ProcessCount,
+				TCPConnCount: m.TCPConnCount,
+			}
 		}
-		if st.Host != nil {
-			hostByID[st.ServerID] = st.Host
+		if h := st.Host; h != nil {
+			hostByID[st.ServerID] = &publicHost{
+				Platform:  h.Platform,
+				Arch:      h.Arch,
+				CPU:       h.CPU,
+				MemTotal:  h.MemTotal,
+				DiskTotal: h.DiskTotal,
+			}
 		}
 	}
 	ym := time.Now().Format("2006-01")
@@ -54,11 +92,20 @@ func (a *API) handlePublicServers(w http.ResponseWriter, r *http.Request) {
 			Online:     onlineByID[srv.ID],
 			LastSeen:   lastSeenByID[srv.ID],
 			Host:       hostByID[srv.ID],
-			Metrics:    stateByID[srv.ID],
-			Note:       srv.Note,
+			Metrics:    metricsByID[srv.ID],
 			TrafficIn:  inB,
 			TrafficOut: outB,
 		})
+	}
+	return out, nil
+}
+
+// handlePublicServers 返回状态页数据。
+func (a *API) handlePublicServers(w http.ResponseWriter, r *http.Request) {
+	out, err := a.publicServers()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -106,11 +153,12 @@ func (a *API) handleServers(w http.ResponseWriter, r *http.Request) {
 			SortOrder int    `json:"sort_order"`
 			Hidden    bool   `json:"hidden"`
 			Online    bool   `json:"online"`
+			ExpiresAt int64  `json:"expires_at"`
 			CreatedAt int64  `json:"created_at"`
 		}
 		out := make([]row, 0, len(servers))
 		for _, s := range servers {
-			out = append(out, row{s.ID, s.Name, s.Secret, s.Note, s.SortOrder, s.Hidden, online[s.ID], s.CreatedAt})
+			out = append(out, row{s.ID, s.Name, s.Secret, s.Note, s.SortOrder, s.Hidden, online[s.ID], s.ExpiresAt, s.CreatedAt})
 		}
 		writeJSON(w, http.StatusOK, out)
 	case http.MethodPost:
@@ -148,12 +196,13 @@ func (a *API) handleServerItem(w http.ResponseWriter, r *http.Request) {
 			Note      string `json:"note"`
 			SortOrder int    `json:"sort_order"`
 			Hidden    bool   `json:"hidden"`
+			ExpiresAt int64  `json:"expires_at"`
 		}
 		if err := readJSON(r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, "bad request")
 			return
 		}
-		if err := a.deps.Store.UpdateServer(id, body.Name, body.Note, body.SortOrder, body.Hidden); err != nil {
+		if err := a.deps.Store.UpdateServer(id, body.Name, body.Note, body.SortOrder, body.Hidden, body.ExpiresAt); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}

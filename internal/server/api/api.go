@@ -39,7 +39,7 @@ func New(deps Deps, adminUser, adminPass string) *API {
 		adminUser: adminUser,
 		adminPass: adminPass,
 	}
-	a.pusher = newPusher(deps.Hub)
+	a.pusher = newPusher(a)
 	return a
 }
 

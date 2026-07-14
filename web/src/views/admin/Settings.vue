@@ -2,20 +2,34 @@
 import { onMounted, ref } from 'vue'
 import { api } from '../../api'
 
-// ==== 安装设置 ====
-const settings = ref({ github_repo: '', public_ws_url: '', agent_name: '' })
+// ==== 安装设置 + 到期提醒（同一份 settings） ====
+const settings = ref({
+  github_repo: '', public_ws_url: '', agent_name: '',
+  expire_notify_enabled: false, expire_notify_time: '09:00',
+})
 const savingSettings = ref(false)
+
+// 自动推导的默认 WS 地址（public_ws_url 留空时生效）。
+const autoWS = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/agent`
 
 async function saveSettings() {
   savingSettings.value = true
   try {
     await api.put('/api/admin/settings', settings.value)
-    alert('安装设置已保存')
+    alert('设置已保存')
   } catch (e) {
     alert('保存失败：' + e.message)
   } finally {
     savingSettings.value = false
   }
+}
+
+function toggleExpireNotify() {
+  if (!settings.value.expire_notify_enabled && !security.value.tg_bound) {
+    alert('开启到期提醒前请先绑定 Telegram Bot')
+    return
+  }
+  settings.value.expire_notify_enabled = !settings.value.expire_notify_enabled
 }
 
 // ==== Telegram 绑定 ====
@@ -130,8 +144,8 @@ onMounted(async () => {
         <input v-model="settings.github_repo" placeholder="例如 gunzi-666/Gtanzhen" />
       </div>
       <div class="form-row">
-        <label>面板对外 WS 地址（Agent 连接用）</label>
-        <input v-model="settings.public_ws_url" placeholder="ws://你的面板IP:8008/api/agent" />
+        <label>面板对外 WS 地址（Agent 连接用，留空 = 自动使用当前访问地址）</label>
+        <input v-model="settings.public_ws_url" :placeholder="`留空自动使用 ${autoWS}`" />
       </div>
       <div class="form-row">
         <label>Agent 实例名（可选，多面板共存时区分服务名）</label>
@@ -169,6 +183,26 @@ onMounted(async () => {
           <button @click="confirmBind">确认绑定</button>
         </div>
       </template>
+    </div>
+
+    <div class="card section">
+      <h3>服务器到期提醒</h3>
+      <p class="muted">给服务器设置了「到期时间」后（在服务器编辑里设置），到期前 3 天起每天在指定时间通过 Telegram 发送一条提醒。</p>
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" :checked="settings.expire_notify_enabled" @click.prevent="toggleExpireNotify" />
+          <span class="slider"></span>
+        </label>
+        <span>{{ settings.expire_notify_enabled ? '已开启' : '已关闭' }}</span>
+        <span v-if="!security.tg_bound" class="warn-tip" style="margin:0">（需先绑定 Telegram Bot 才能开启）</span>
+      </div>
+      <div class="form-row" style="margin-top:12px">
+        <label>每日提醒时间</label>
+        <input v-model="settings.expire_notify_time" type="time" style="max-width:160px" />
+      </div>
+      <div class="actions">
+        <button :disabled="savingSettings" @click="saveSettings">保存</button>
+      </div>
     </div>
 
     <div class="card section">
@@ -232,6 +266,11 @@ onMounted(async () => {
 .warn-tip {
   color: var(--yellow);
   font-size: 13px;
+}
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .actions {
   margin-top: 8px;

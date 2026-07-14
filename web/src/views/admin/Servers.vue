@@ -2,11 +2,12 @@
 import { onMounted, ref } from 'vue'
 import { api } from '../../api'
 import { fmtTime } from '../../format'
+import { copyWithToast } from '../../clipboard'
 
 const servers = ref([])
 const showModal = ref(false)
 const editing = ref(null)
-const form = ref({ name: '', note: '', sort_order: 0, hidden: false })
+const form = ref({ name: '', note: '', sort_order: 0, hidden: false, expire_date: '' })
 
 const settings = ref({ github_repo: '', public_ws_url: '', agent_name: '' })
 
@@ -17,39 +18,70 @@ async function load() {
   ])
 }
 
+// 面板对外 WS 地址：优先用设置，否则用浏览器当前访问的地址自动推导。
+function wsURL() {
+  if (settings.value.public_ws_url) return settings.value.public_ws_url
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws'
+  return `${proto}://${location.host}/api/agent`
+}
+
 // 生成某台服务器的一键安装命令；设置了实例名则追加 --name。
 function installCmd(s) {
   const repo = settings.value.github_repo || 'gunzi-666/Gtanzhen'
-  const ws = settings.value.public_ws_url || 'ws://面板IP:8008/api/agent'
   const script = `https://raw.githubusercontent.com/${repo}/main/scripts/install-agent.sh`
   const name = settings.value.agent_name ? ` --name ${settings.value.agent_name}` : ''
-  return `curl -fsSL ${script} -o agent.sh && sudo REPO=${repo} bash agent.sh ${ws} ${s.secret}${name}`
+  return `curl -fsSL ${script} -o agent.sh && sudo REPO=${repo} bash agent.sh ${wsURL()} ${s.secret}${name}`
 }
 
 async function copyCmd(s) {
-  try {
-    await navigator.clipboard.writeText(installCmd(s))
-    alert('一键安装命令已复制')
-  } catch {
-    prompt('复制安装命令：', installCmd(s))
-  }
+  await copyWithToast(installCmd(s), '一键安装命令已复制')
+}
+
+// 到期时间：unix 秒 ↔ 日期输入框（当天 23:59:59 到期）。
+function tsToDate(ts) {
+  if (!ts) return ''
+  const d = new Date(ts * 1000)
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+function dateToTs(str) {
+  if (!str) return 0
+  return Math.floor(new Date(`${str}T23:59:59`).getTime() / 1000)
+}
+// 剩余天数徽章：<0 已到期，<=3 天临期高亮。
+function expiryInfo(s) {
+  if (!s.expires_at) return null
+  const days = Math.ceil((s.expires_at * 1000 - Date.now()) / 86400000)
+  if (days < 0) return { text: '已到期', cls: 'crit' }
+  if (days <= 3) return { text: `剩 ${days} 天`, cls: 'crit' }
+  if (days <= 14) return { text: `剩 ${days} 天`, cls: 'warn' }
+  return { text: `剩 ${days} 天`, cls: '' }
 }
 
 function openCreate() {
   editing.value = null
-  form.value = { name: '', note: '', sort_order: 0, hidden: false }
+  form.value = { name: '', note: '', sort_order: 0, hidden: false, expire_date: '' }
   showModal.value = true
 }
 function openEdit(s) {
   editing.value = s
-  form.value = { name: s.name, note: s.note, sort_order: s.sort_order, hidden: s.hidden }
+  form.value = {
+    name: s.name, note: s.note, sort_order: s.sort_order, hidden: s.hidden,
+    expire_date: tsToDate(s.expires_at),
+  }
   showModal.value = true
 }
 
 async function save() {
   if (!form.value.name.trim()) return
   if (editing.value) {
-    await api.put(`/api/admin/servers/${editing.value.id}`, form.value)
+    await api.put(`/api/admin/servers/${editing.value.id}`, {
+      name: form.value.name,
+      note: form.value.note,
+      sort_order: form.value.sort_order,
+      hidden: form.value.hidden,
+      expires_at: dateToTs(form.value.expire_date),
+    })
   } else {
     await api.post('/api/admin/servers', { name: form.value.name, note: form.value.note })
   }
@@ -64,12 +96,7 @@ async function remove(s) {
 }
 
 async function copySecret(s) {
-  try {
-    await navigator.clipboard.writeText(s.secret)
-    alert('secret 已复制到剪贴板')
-  } catch {
-    prompt('复制 secret：', s.secret)
-  }
+  await copyWithToast(s.secret, 'secret 已复制')
 }
 
 onMounted(load)
@@ -85,19 +112,25 @@ onMounted(load)
       </div>
     </div>
 
-    <div class="card">
+    <div class="card table-card">
       <table>
         <thead>
           <tr>
-            <th>ID</th><th>名称</th><th>状态</th><th>备注</th><th>Secret</th><th>创建时间</th><th></th>
+            <th>ID</th><th>名称</th><th>状态</th><th>到期</th><th>备注</th><th>Secret</th><th>创建时间</th><th></th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="s in servers" :key="s.id">
-            <td>{{ s.id }}</td>
+            <td class="muted">{{ s.id }}</td>
             <td>{{ s.name }} <span v-if="s.hidden" class="chip">隐藏</span></td>
             <td>
               <span class="badge" :class="s.online ? 'online' : 'offline'">{{ s.online ? '在线' : '离线' }}</span>
+            </td>
+            <td>
+              <template v-if="expiryInfo(s)">
+                <span class="expiry" :class="expiryInfo(s).cls">{{ tsToDate(s.expires_at) }}（{{ expiryInfo(s).text }}）</span>
+              </template>
+              <span v-else class="muted">-</span>
             </td>
             <td class="muted">{{ s.note || '-' }}</td>
             <td>
@@ -111,18 +144,18 @@ onMounted(load)
               <button class="danger small" @click="remove(s)">删除</button>
             </td>
           </tr>
-          <tr v-if="servers.length === 0"><td colspan="7" class="muted" style="text-align:center">暂无服务器</td></tr>
+          <tr v-if="servers.length === 0"><td colspan="8" class="muted" style="text-align:center">暂无服务器</td></tr>
         </tbody>
       </table>
     </div>
 
     <div class="install-hint card">
       <b>Agent 安装方式：</b>
-      <div class="muted" style="margin:6px 0">推荐：点击每台服务器的「一键命令」，复制后在目标机器（Linux）以 root 运行，自动下载 Agent 并注册为 systemd 服务上线。</div>
-      <div class="muted">手动：<code>probe-agent -server {{ settings.public_ws_url || 'ws://面板IP:8008/api/agent' }} -secret 该服务器的secret</code></div>
+      <div class="muted" style="margin:6px 0">推荐：点击每台服务器的「一键命令」，复制后在目标机器（Linux）以 root 运行，自动下载 Agent 并注册为 systemd 服务上线。面板地址默认取当前浏览器访问的地址（{{ wsURL() }}），也可在「设置」页固定指定。</div>
+      <div class="muted">手动：<code>probe-agent -server {{ wsURL() }} -secret 该服务器的secret</code></div>
       <div class="muted" style="margin-top:6px">多实例：目标机器需要连接多个面板时，在「设置」页填写 Agent 实例名，一键命令会自动追加 <code style="display:inline;padding:2px 6px">--name 实例名</code>，多个 Agent 可共存互不影响。当前实例名：<b>{{ settings.agent_name || '（默认 probe-agent）' }}</b></div>
-      <div v-if="!settings.github_repo || !settings.public_ws_url" class="warn-tip">
-        提示：请先在「设置」页填写 GitHub 仓库与面板对外地址，一键命令才会正确。
+      <div v-if="!settings.github_repo" class="warn-tip">
+        提示：尚未在「设置」页填写 GitHub 仓库，一键命令暂用默认仓库。
       </div>
     </div>
 
@@ -138,6 +171,10 @@ onMounted(load)
           <input v-model="form.note" />
         </div>
         <template v-if="editing">
+          <div class="form-row">
+            <label>到期时间（留空 = 不设置，用于到期提醒）</label>
+            <input v-model="form.expire_date" type="date" />
+          </div>
           <div class="form-row">
             <label>排序值（越小越靠前）</label>
             <input v-model.number="form.sort_order" type="number" />
@@ -163,17 +200,23 @@ onMounted(load)
 .row-actions {
   display: flex;
   gap: 6px;
+  justify-content: flex-end;
+}
+.table-card {
+  padding: 6px 10px;
 }
 .install-hint {
   margin-top: 16px;
 }
 .install-hint code {
   display: block;
-  background: var(--bg-soft);
+  background: var(--muted);
+  border: 1px solid var(--border);
   padding: 8px 12px;
   border-radius: 8px;
   margin: 8px 0;
   font-family: monospace;
+  font-size: 12.5px;
 }
 .checkbox-row .cb {
   width: auto;
@@ -187,5 +230,14 @@ onMounted(load)
   margin-top: 8px;
   color: var(--yellow);
   font-size: 13px;
+}
+.expiry {
+  font-size: 13px;
+}
+.expiry.warn {
+  color: var(--yellow);
+}
+.expiry.crit {
+  color: var(--red);
 }
 </style>

@@ -12,6 +12,7 @@ import (
 	"probe/internal/server/alert"
 	"probe/internal/server/api"
 	"probe/internal/server/cron"
+	"probe/internal/server/expiry"
 	"probe/internal/server/hub"
 	"probe/internal/server/monitor"
 	"probe/internal/server/store"
@@ -63,6 +64,9 @@ func main() {
 	monitor.New(st, tm).Run()
 	cronRunner := cron.New(st, tm)
 	cronRunner.Start()
+
+	// 服务器到期每日 TG 提醒。
+	expiry.Run(st)
 
 	deps := api.Deps{Hub: h, Store: st, Dispatcher: tm, Cron: cronRunner}
 	a := api.New(deps, *adminUser, *adminPass)
