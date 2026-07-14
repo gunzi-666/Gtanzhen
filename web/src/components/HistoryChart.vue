@@ -37,13 +37,18 @@ function render() {
     ]
   }
 
+  // 轴线/文字颜色跟随当前主题的 CSS 变量。
+  const css = getComputedStyle(document.documentElement)
+  const dim = css.getPropertyValue('--text-dim').trim() || '#9aa3b2'
+  const line = css.getPropertyValue('--border').trim() || '#2a2f3a'
+
   chart.setOption({
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis', valueFormatter: yFmt },
-    legend: { show: props.metric === 'net', textStyle: { color: '#9aa3b2' } },
+    legend: { show: props.metric === 'net', textStyle: { color: dim } },
     grid: { left: 60, right: 20, top: 30, bottom: 30 },
-    xAxis: { type: 'category', data: times, axisLine: { lineStyle: { color: '#2a2f3a' } }, axisLabel: { color: '#9aa3b2' } },
-    yAxis: { type: 'value', axisLabel: { color: '#9aa3b2', formatter: yFmt }, splitLine: { lineStyle: { color: '#2a2f3a' } } },
+    xAxis: { type: 'category', data: times, axisLine: { lineStyle: { color: line } }, axisLabel: { color: dim } },
+    yAxis: { type: 'value', axisLabel: { color: dim, formatter: yFmt }, splitLine: { lineStyle: { color: line } } },
     series,
     color: ['#4f8cff', '#35c46a'],
   }, true)
@@ -53,9 +58,11 @@ onMounted(() => {
   chart = echarts.init(el.value)
   render()
   window.addEventListener('resize', resize)
+  window.addEventListener('probe-theme', render)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', resize)
+  window.removeEventListener('probe-theme', render)
   chart && chart.dispose()
 })
 function resize() {

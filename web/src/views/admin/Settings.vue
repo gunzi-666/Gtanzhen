@@ -1,12 +1,28 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { api } from '../../api'
+import { toast } from '../../clipboard'
 
-// ==== 安装设置 + 到期提醒（同一份 settings） ====
+// 当前标签页。
+const tab = ref('site')
+const tabs = [
+  { key: 'site', label: '站点' },
+  { key: 'install', label: '安装设置' },
+  { key: 'status', label: '状态页' },
+  { key: 'expire', label: '到期提醒' },
+  { key: 'telegram', label: 'Telegram' },
+  { key: 'password', label: '账号安全' },
+]
+
+// ==== 站点设置（站点 / 安装 / 状态页 / 到期提醒共用一份） ====
 const settings = ref({
   github_repo: '', public_ws_url: '', agent_name: '',
   expire_notify_enabled: false, expire_notify_time: '09:00',
+  status_password_enabled: false, status_password_set: false,
+  site_name: '', status_background: '',
 })
+// 状态页密码输入框（仅在设置/修改时填写，保存后清空）。
+const statusPassword = ref('')
 const savingSettings = ref(false)
 
 // 自动推导的默认 WS 地址（public_ws_url 留空时生效）。
@@ -15,8 +31,13 @@ const autoWS = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.ho
 async function saveSettings() {
   savingSettings.value = true
   try {
-    await api.put('/api/admin/settings', settings.value)
-    alert('设置已保存')
+    await api.put('/api/admin/settings', {
+      ...settings.value,
+      status_password: statusPassword.value,
+    })
+    statusPassword.value = ''
+    toast('设置已保存')
+    settings.value = await api.get('/api/admin/settings')
   } catch (e) {
     alert('保存失败：' + e.message)
   } finally {
@@ -30,6 +51,14 @@ function toggleExpireNotify() {
     return
   }
   settings.value.expire_notify_enabled = !settings.value.expire_notify_enabled
+}
+
+function toggleStatusPassword() {
+  if (!settings.value.status_password_enabled && !settings.value.status_password_set && !statusPassword.value) {
+    alert('请先在下方设置访问密码，再开启')
+    return
+  }
+  settings.value.status_password_enabled = !settings.value.status_password_enabled
 }
 
 // ==== Telegram 绑定 ====
@@ -52,7 +81,7 @@ async function sendBindCode() {
   try {
     await api.post('/api/admin/tg/bind/code', tgForm.value)
     tgCodeSent.value = true
-    alert('验证码已发送到 Telegram，请查收')
+    toast('验证码已发送到 Telegram')
   } catch (e) {
     alert(e.message)
   } finally {
@@ -64,7 +93,7 @@ async function confirmBind() {
   if (!tgCode.value.trim()) return
   try {
     await api.post('/api/admin/tg/bind', { code: tgCode.value.trim() })
-    alert('绑定成功')
+    toast('绑定成功')
     tgCode.value = ''
     tgCodeSent.value = false
     tgForm.value = { bot_token: '', chat_id: '' }
@@ -80,7 +109,44 @@ async function unbind() {
   await loadSecurity()
 }
 
-// ==== 修改密码 ====
+// ==== 修改管理员用户名 ====
+const acForm = ref({ new_username: '', password: '', code: '' })
+const acCodeSent = ref(false)
+const acSending = ref(false)
+
+async function sendAcCode() {
+  acSending.value = true
+  try {
+    await api.post('/api/admin/account/code', {})
+    acCodeSent.value = true
+    toast('验证码已发送到 Telegram')
+  } catch (e) {
+    alert(e.message)
+  } finally {
+    acSending.value = false
+  }
+}
+
+async function changeAccount() {
+  const f = acForm.value
+  if (!f.new_username.trim() || !f.password || !f.code.trim()) {
+    alert('请填写完整')
+    return
+  }
+  try {
+    await api.post('/api/admin/account', {
+      new_username: f.new_username.trim(),
+      password: f.password,
+      code: f.code.trim(),
+    })
+    alert('用户名已修改，请重新登录')
+    location.hash = '#/login'
+  } catch (e) {
+    alert(e.message)
+  }
+}
+
+// ==== 修改管理员密码 ====
 const pwForm = ref({ old_password: '', new_password: '', new_password2: '', code: '' })
 const pwCodeSent = ref(false)
 const pwSending = ref(false)
@@ -90,7 +156,7 @@ async function sendPwCode() {
   try {
     await api.post('/api/admin/password/code', {})
     pwCodeSent.value = true
-    alert('验证码已发送到已绑定的 Telegram')
+    toast('验证码已发送到 Telegram')
   } catch (e) {
     alert(e.message)
   } finally {
@@ -131,12 +197,36 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
-    <div class="page-head">
+  <div class="settings-wrap">
+    <div class="page-head settings-head">
       <h2>设置</h2>
     </div>
 
-    <div class="card section">
+    <div class="seg tabs-seg">
+      <button v-for="t in tabs" :key="t.key" :class="{ active: tab === t.key }" @click="tab = t.key">
+        {{ t.label }}
+      </button>
+    </div>
+
+    <!-- 站点 -->
+    <div v-show="tab === 'site'" class="card section">
+      <h3>站点外观</h3>
+      <p class="muted">状态页的标题与背景，保存后刷新状态页生效。</p>
+      <div class="form-row">
+        <label>站点名称（显示在状态页标题，留空 = 探针监控）</label>
+        <input v-model="settings.site_name" placeholder="例如 我的小机群" />
+      </div>
+      <div class="form-row">
+        <label>状态页背景图 URL（留空 = 纯色背景）</label>
+        <input v-model="settings.status_background" placeholder="https://example.com/bg.jpg" />
+      </div>
+      <div class="actions">
+        <button :disabled="savingSettings" @click="saveSettings">保存</button>
+      </div>
+    </div>
+
+    <!-- 安装设置 -->
+    <div v-show="tab === 'install'" class="card section">
       <h3>Agent 安装设置</h3>
       <p class="muted">用于「服务器」页生成一键安装命令，保存后立即生效。</p>
       <div class="form-row">
@@ -156,7 +246,50 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div class="card section">
+    <!-- 状态页 -->
+    <div v-show="tab === 'status'" class="card section">
+      <h3>状态页访问密码</h3>
+      <p class="muted">开启后，访客需输入密码才能查看公开状态页（已登录的管理员不受影响）。</p>
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" :checked="settings.status_password_enabled" @click.prevent="toggleStatusPassword" />
+          <span class="slider"></span>
+        </label>
+        <span>{{ settings.status_password_enabled ? '已开启' : '已关闭' }}</span>
+        <span v-if="settings.status_password_set" class="chip">已设置密码</span>
+      </div>
+      <div class="form-row" style="margin-top:14px">
+        <label>{{ settings.status_password_set ? '修改访问密码（留空 = 不修改）' : '设置访问密码（至少 4 位）' }}</label>
+        <input v-model="statusPassword" type="password" placeholder="访客访问状态页需要输入的密码" autocomplete="new-password" />
+      </div>
+      <div class="actions">
+        <button :disabled="savingSettings" @click="saveSettings">保存</button>
+      </div>
+    </div>
+
+    <!-- 到期提醒 -->
+    <div v-show="tab === 'expire'" class="card section">
+      <h3>服务器到期提醒</h3>
+      <p class="muted">给服务器设置了「到期时间」后（在服务器编辑里设置），到期前 3 天起每天在指定时间通过 Telegram 发送一条提醒。</p>
+      <div class="toggle-row">
+        <label class="switch">
+          <input type="checkbox" :checked="settings.expire_notify_enabled" @click.prevent="toggleExpireNotify" />
+          <span class="slider"></span>
+        </label>
+        <span>{{ settings.expire_notify_enabled ? '已开启' : '已关闭' }}</span>
+        <span v-if="!security.tg_bound" class="warn-tip" style="margin:0">（需先绑定 Telegram Bot 才能开启）</span>
+      </div>
+      <div class="form-row" style="margin-top:14px">
+        <label>每日提醒时间</label>
+        <input v-model="settings.expire_notify_time" type="time" style="max-width:160px" />
+      </div>
+      <div class="actions">
+        <button :disabled="savingSettings" @click="saveSettings">保存</button>
+      </div>
+    </div>
+
+    <!-- Telegram -->
+    <div v-show="tab === 'telegram'" class="card section">
       <h3>Telegram Bot 绑定</h3>
       <p class="muted">绑定后用于接收修改密码等敏感操作的验证码。向 @BotFather 创建 Bot 获取 Token，Chat ID 可通过 @userinfobot 查询。</p>
 
@@ -185,30 +318,34 @@ onMounted(async () => {
       </template>
     </div>
 
+    <!-- 账号安全 -->
+    <div v-show="tab === 'password'" class="stack">
     <div class="card section">
-      <h3>服务器到期提醒</h3>
-      <p class="muted">给服务器设置了「到期时间」后（在服务器编辑里设置），到期前 3 天起每天在指定时间通过 Telegram 发送一条提醒。</p>
-      <div class="toggle-row">
-        <label class="switch">
-          <input type="checkbox" :checked="settings.expire_notify_enabled" @click.prevent="toggleExpireNotify" />
-          <span class="slider"></span>
-        </label>
-        <span>{{ settings.expire_notify_enabled ? '已开启' : '已关闭' }}</span>
-        <span v-if="!security.tg_bound" class="warn-tip" style="margin:0">（需先绑定 Telegram Bot 才能开启）</span>
-      </div>
-      <div class="form-row" style="margin-top:12px">
-        <label>每日提醒时间</label>
-        <input v-model="settings.expire_notify_time" type="time" style="max-width:160px" />
-      </div>
-      <div class="actions">
-        <button :disabled="savingSettings" @click="saveSettings">保存</button>
-      </div>
+      <h3>修改管理员用户名</h3>
+      <p v-if="!security.tg_bound" class="warn-tip">出于安全考虑，修改用户名/密码前必须先绑定 Telegram Bot 接收验证码。</p>
+      <template v-else>
+        <p class="muted">当前用户名：<b>{{ security.username }}</b>。修改后所有会话将失效，需重新登录。</p>
+        <div class="form-row">
+          <label>新用户名（至少 3 个字符）</label>
+          <input v-model="acForm.new_username" autocomplete="off" />
+        </div>
+        <div class="form-row">
+          <label>当前密码</label>
+          <input v-model="acForm.password" type="password" autocomplete="current-password" />
+        </div>
+        <div class="actions">
+          <button class="ghost" :disabled="acSending" @click="sendAcCode">{{ acCodeSent ? '重新发送验证码' : '发送验证码到 Telegram' }}</button>
+        </div>
+        <div v-if="acCodeSent" class="form-row inline-verify">
+          <input v-model="acForm.code" placeholder="输入收到的 6 位验证码" maxlength="6" />
+          <button @click="changeAccount">确认修改用户名</button>
+        </div>
+      </template>
     </div>
 
-    <div class="card section">
+    <div v-if="security.tg_bound" class="card section">
       <h3>修改管理员密码</h3>
-      <p v-if="!security.tg_bound" class="warn-tip">出于安全考虑，修改密码前必须先绑定 Telegram Bot 接收验证码。</p>
-      <template v-else>
+      <template v-if="security.tg_bound">
         <p class="muted">
           验证流程：填写旧密码和新密码 → 发送验证码到 Telegram → 输入验证码提交。
           <span v-if="security.password_changed">（当前使用的是后台修改过的密码）</span>
@@ -235,25 +372,39 @@ onMounted(async () => {
         </div>
       </template>
     </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.section {
-  margin-bottom: 16px;
-  max-width: 640px;
+/* 内容整体居中 */
+.settings-wrap {
+  max-width: 660px;
+  margin: 0 auto;
+}
+.settings-head {
+  justify-content: center;
+}
+.tabs-seg {
+  display: flex;
+  width: 100%;
+  margin-bottom: 18px;
+}
+.tabs-seg button {
+  flex: 1;
 }
 .section h3 {
-  margin-bottom: 4px;
+  margin: 0 0 4px;
 }
 .section > .muted {
   font-size: 13px;
-  margin-bottom: 12px;
+  margin: 0 0 14px;
 }
 .bound-box {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 .inline-verify {
   display: flex;
@@ -271,6 +422,11 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 .actions {
   margin-top: 8px;

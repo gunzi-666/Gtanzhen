@@ -5,19 +5,43 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 )
 
 // Server 是一台被监控服务器的登记信息。
 type Server struct {
-	ID        uint64 `json:"id"`
-	Name      string `json:"name"`
-	Secret    string `json:"secret"`
-	SortOrder int    `json:"sort_order"`
-	Hidden    bool   `json:"hidden"`
-	Note      string `json:"note"`
-	ExpiresAt int64  `json:"expires_at"` // 到期时间（unix 秒），0 表示未设置
-	CreatedAt int64  `json:"created_at"`
+	ID        uint64   `json:"id"`
+	Name      string   `json:"name"`
+	Secret    string   `json:"secret"`
+	SortOrder int      `json:"sort_order"`
+	Hidden    bool     `json:"hidden"`
+	Note      string   `json:"note"`
+	ExpiresAt int64    `json:"expires_at"` // 到期时间（unix 秒），0 表示未设置
+	Tags      []string `json:"tags"`       // 个性标签，DB 内以逗号分隔存储
+	Group     string   `json:"group"`      // 分组名，空表示未分组（DB 列名 grp，避开保留字）
+	CreatedAt int64    `json:"created_at"`
+}
+
+// joinTags / splitTags 在 []string 与 DB 逗号分隔文本之间转换。
+func joinTags(tags []string) string {
+	var out []string
+	for _, t := range tags {
+		if t = strings.TrimSpace(t); t != "" {
+			out = append(out, t)
+		}
+	}
+	return strings.Join(out, ",")
+}
+
+func splitTags(s string) []string {
+	out := []string{}
+	for _, t := range strings.Split(s, ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // ErrNotFound 表示记录不存在。
@@ -36,6 +60,7 @@ func (s *Store) CreateServer(name, note string) (*Server, error) {
 		Name:      name,
 		Secret:    genSecret(),
 		Note:      note,
+		Tags:      []string{},
 		CreatedAt: time.Now().Unix(),
 	}
 	res, err := s.db.Exec(
@@ -52,7 +77,7 @@ func (s *Store) CreateServer(name, note string) (*Server, error) {
 
 // ListServers 返回所有服务器（按 sort_order, id）。
 func (s *Store) ListServers() ([]Server, error) {
-	rows, err := s.db.Query(`SELECT id,name,secret,sort_order,hidden,note,expires_at,created_at FROM servers ORDER BY sort_order, id`)
+	rows, err := s.db.Query(`SELECT id,name,secret,sort_order,hidden,note,expires_at,tags,grp,created_at FROM servers ORDER BY sort_order, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -61,24 +86,26 @@ func (s *Store) ListServers() ([]Server, error) {
 	for rows.Next() {
 		var srv Server
 		var hidden int
-		if err := rows.Scan(&srv.ID, &srv.Name, &srv.Secret, &srv.SortOrder, &hidden, &srv.Note, &srv.ExpiresAt, &srv.CreatedAt); err != nil {
+		var tags string
+		if err := rows.Scan(&srv.ID, &srv.Name, &srv.Secret, &srv.SortOrder, &hidden, &srv.Note, &srv.ExpiresAt, &tags, &srv.Group, &srv.CreatedAt); err != nil {
 			return nil, err
 		}
 		srv.Hidden = hidden == 1
+		srv.Tags = splitTags(tags)
 		out = append(out, srv)
 	}
 	return out, rows.Err()
 }
 
-// UpdateServer 更新名称、备注、排序、隐藏、到期时间。
-func (s *Store) UpdateServer(id uint64, name, note string, sortOrder int, hidden bool, expiresAt int64) error {
+// UpdateServer 更新名称、备注、排序、隐藏、到期时间、标签、分组。
+func (s *Store) UpdateServer(id uint64, name, note string, sortOrder int, hidden bool, expiresAt int64, tags []string, group string) error {
 	h := 0
 	if hidden {
 		h = 1
 	}
 	res, err := s.db.Exec(
-		`UPDATE servers SET name=?, note=?, sort_order=?, hidden=?, expires_at=? WHERE id=?`,
-		name, note, sortOrder, h, expiresAt, id,
+		`UPDATE servers SET name=?, note=?, sort_order=?, hidden=?, expires_at=?, tags=?, grp=? WHERE id=?`,
+		name, note, sortOrder, h, expiresAt, joinTags(tags), strings.TrimSpace(group), id,
 	)
 	if err != nil {
 		return err

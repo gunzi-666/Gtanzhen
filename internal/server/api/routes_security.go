@@ -17,9 +17,10 @@ import (
 
 // 安全相关设置项的键名。
 const (
-	settingPassHash = "admin_pass_hash" // bcrypt 哈希，存在则覆盖启动参数密码
-	settingTGToken  = "tg_bot_token"    // 绑定的 Telegram Bot Token
-	settingTGChat   = "tg_chat_id"      // 绑定的 Telegram Chat ID
+	settingPassHash  = "admin_pass_hash" // bcrypt 哈希，存在则覆盖启动参数密码
+	settingAdminUser = "admin_user"      // 后台改过的用户名，存在则覆盖启动参数用户名
+	settingTGToken   = "tg_bot_token"    // 绑定的 Telegram Bot Token
+	settingTGChat    = "tg_chat_id"      // 绑定的 Telegram Chat ID
 )
 
 const codeTTL = 10 * time.Minute
@@ -81,10 +82,35 @@ func (a *API) registerSecurityRoutes(mux *http.ServeMux) {
 	mux.Handle("/api/admin/tg/unbind", a.auth(http.HandlerFunc(a.handleTGUnbind)))
 	mux.Handle("/api/admin/password/code", a.auth(http.HandlerFunc(a.handlePasswordCode)))
 	mux.Handle("/api/admin/password", a.auth(http.HandlerFunc(a.handlePasswordChange)))
+	mux.Handle("/api/admin/account/code", a.auth(http.HandlerFunc(a.handleAccountCode)))
+	mux.Handle("/api/admin/account", a.auth(http.HandlerFunc(a.handleAccountChange)))
 }
 
 func (a *API) tgBound() bool {
 	return a.deps.Store.GetSetting(settingTGToken, "") != "" && a.deps.Store.GetSetting(settingTGChat, "") != ""
+}
+
+// notifyTG 若已绑定 TG，异步发送一条提醒（失败静默，不影响主流程）。
+func (a *API) notifyTG(title, body string) {
+	token := a.deps.Store.GetSetting(settingTGToken, "")
+	chat := a.deps.Store.GetSetting(settingTGChat, "")
+	if token == "" || chat == "" {
+		return
+	}
+	go func() {
+		_ = alert.SendTelegram(token, chat, title, body)
+	}()
+}
+
+// clientIP 尽量取真实来源 IP（考虑反代头）。
+func clientIP(r *http.Request) string {
+	if v := r.Header.Get("X-Forwarded-For"); v != "" {
+		return strings.TrimSpace(strings.SplitN(v, ",", 2)[0])
+	}
+	if v := r.Header.Get("X-Real-IP"); v != "" {
+		return v
+	}
+	return r.RemoteAddr
 }
 
 // GET /api/admin/security：当前安全状态。
@@ -105,6 +131,7 @@ func (a *API) handleSecurityInfo(w http.ResponseWriter, r *http.Request) {
 		"tg_chat_id":       a.deps.Store.GetSetting(settingTGChat, ""),
 		"tg_token_masked":  masked,
 		"password_changed": a.deps.Store.GetSetting(settingPassHash, "") != "",
+		"username":         a.effectiveUser(),
 	})
 }
 
@@ -245,6 +272,70 @@ func (a *API) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 改密后所有会话作废，强制重新登录。
+	a.sessions.revokeAll()
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// POST /api/admin/account/code：向已绑定的 TG 发送改用户名验证码。
+func (a *API) handleAccountCode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !a.tgBound() {
+		writeError(w, http.StatusPreconditionFailed, "请先绑定 Telegram Bot")
+		return
+	}
+	code := genCode()
+	err := alert.SendTelegram(
+		a.deps.Store.GetSetting(settingTGToken, ""),
+		a.deps.Store.GetSetting(settingTGChat, ""),
+		"探针面板修改用户名验证", "验证码："+code+"\n10 分钟内有效。若非本人操作，请立即检查面板安全！")
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "发送失败："+err.Error())
+		return
+	}
+	vcodes.put("account", &verifyCode{code: code, expires: time.Now().Add(codeTTL)})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// POST /api/admin/account：校验密码 + TG 验证码后更新用户名，并吊销所有会话。
+func (a *API) handleAccountChange(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !a.tgBound() {
+		writeError(w, http.StatusPreconditionFailed, "请先绑定 Telegram Bot")
+		return
+	}
+	var body struct {
+		NewUsername string `json:"new_username"`
+		Password    string `json:"password"`
+		Code        string `json:"code"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, "bad request")
+		return
+	}
+	body.NewUsername = strings.TrimSpace(body.NewUsername)
+	if len(body.NewUsername) < 3 {
+		writeError(w, http.StatusBadRequest, "新用户名至少 3 个字符")
+		return
+	}
+	if !a.checkPassword(body.Password) {
+		writeError(w, http.StatusUnauthorized, "密码错误")
+		return
+	}
+	if _, ok := vcodes.check("account", strings.TrimSpace(body.Code)); !ok {
+		writeError(w, http.StatusUnauthorized, "验证码错误或已过期")
+		return
+	}
+	if err := a.deps.Store.SetSetting(settingAdminUser, body.NewUsername); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// 改用户名后所有会话作废，强制重新登录。
 	a.sessions.revokeAll()
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

@@ -101,6 +101,14 @@ func (l *loginLimiter) reset() {
 	l.fails = 0
 }
 
+// effectiveUser 当前生效的管理员用户名：后台改过则用数据库里的，否则用启动参数。
+func (a *API) effectiveUser() string {
+	if u := a.deps.Store.GetSetting(settingAdminUser, ""); u != "" {
+		return u
+	}
+	return a.adminUser
+}
+
 // checkPassword 校验管理员密码：后台改过密码则用数据库里的 bcrypt 哈希，
 // 否则退回启动参数 / 环境变量里的初始密码。
 func (a *API) checkPassword(pass string) bool {
@@ -139,7 +147,7 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "bad request")
 		return
 	}
-	userOK := subtle.ConstantTimeCompare([]byte(body.Username), []byte(a.adminUser)) == 1
+	userOK := subtle.ConstantTimeCompare([]byte(body.Username), []byte(a.effectiveUser())) == 1
 	passOK := a.checkPassword(body.Password)
 	if !userOK || !passOK {
 		limiter.fail()
@@ -156,6 +164,10 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   int(sessionTTL.Seconds()),
 	})
+	// 已绑定 TG 时发送登录提醒。
+	a.notifyTG("面板登录提醒",
+		"管理员 "+body.Username+" 登录了面板后台。\n时间："+time.Now().Format("2006-01-02 15:04:05")+
+			"\n来源 IP："+clientIP(r)+"\n\n若非本人操作，请立即修改密码！")
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

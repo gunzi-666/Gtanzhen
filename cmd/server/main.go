@@ -17,6 +17,7 @@ import (
 	"probe/internal/server/monitor"
 	"probe/internal/server/store"
 	"probe/internal/server/task"
+	"probe/internal/server/tgbot"
 	"probe/web"
 )
 
@@ -67,6 +68,9 @@ func main() {
 
 	// 服务器到期每日 TG 提醒。
 	expiry.Run(st)
+
+	// TG Bot 命令查询（/overview、/server）。
+	tgbot.Run(st, h)
 
 	deps := api.Deps{Hub: h, Store: st, Dispatcher: tm, Cron: cronRunner}
 	a := api.New(deps, *adminUser, *adminPass)

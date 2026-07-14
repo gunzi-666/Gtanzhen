@@ -1,13 +1,23 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { api } from '../../api'
-import { fmtTime } from '../../format'
+import { fmtTime, tagColor } from '../../format'
 import { copyWithToast } from '../../clipboard'
 
 const servers = ref([])
 const showModal = ref(false)
 const editing = ref(null)
-const form = ref({ name: '', note: '', sort_order: 0, hidden: false, expire_date: '' })
+const form = ref({ name: '', note: '', sort_order: 0, hidden: false, expire_date: '', tags_text: '', group: '' })
+
+function tagStyle(t) {
+  const c = tagColor(t)
+  return { color: c, borderColor: c + '55', background: c + '1f' }
+}
+
+// 标签输入框（逗号分隔，兼容中文逗号）↔ 数组。
+function parseTags(text) {
+  return text.split(/[,，]/).map((t) => t.trim()).filter(Boolean)
+}
 
 const settings = ref({ github_repo: '', public_ws_url: '', agent_name: '' })
 
@@ -60,7 +70,7 @@ function expiryInfo(s) {
 
 function openCreate() {
   editing.value = null
-  form.value = { name: '', note: '', sort_order: 0, hidden: false, expire_date: '' }
+  form.value = { name: '', note: '', sort_order: 0, hidden: false, expire_date: '', tags_text: '', group: '' }
   showModal.value = true
 }
 function openEdit(s) {
@@ -68,6 +78,8 @@ function openEdit(s) {
   form.value = {
     name: s.name, note: s.note, sort_order: s.sort_order, hidden: s.hidden,
     expire_date: tsToDate(s.expires_at),
+    tags_text: (s.tags || []).join(', '),
+    group: s.group || '',
   }
   showModal.value = true
 }
@@ -81,6 +93,8 @@ async function save() {
       sort_order: form.value.sort_order,
       hidden: form.value.hidden,
       expires_at: dateToTs(form.value.expire_date),
+      tags: parseTags(form.value.tags_text),
+      group: form.value.group.trim(),
     })
   } else {
     await api.post('/api/admin/servers', { name: form.value.name, note: form.value.note })
@@ -122,7 +136,12 @@ onMounted(load)
         <tbody>
           <tr v-for="s in servers" :key="s.id">
             <td class="muted">{{ s.id }}</td>
-            <td>{{ s.name }} <span v-if="s.hidden" class="chip">隐藏</span></td>
+            <td>
+              {{ s.name }}
+              <span v-if="s.group" class="chip">{{ s.group }}</span>
+              <span v-for="t in (s.tags || [])" :key="t" class="tag" :style="tagStyle(t)">{{ t }}</span>
+              <span v-if="s.hidden" class="chip">隐藏</span>
+            </td>
             <td>
               <span class="badge" :class="s.online ? 'online' : 'offline'">{{ s.online ? '在线' : '离线' }}</span>
             </td>
@@ -171,6 +190,17 @@ onMounted(load)
           <input v-model="form.note" />
         </div>
         <template v-if="editing">
+          <div class="form-row">
+            <label>分组（相同分组的服务器在状态页归为一节，留空 = 未分组）</label>
+            <input v-model="form.group" placeholder="例如 香港 / 美国 / 生产环境" />
+          </div>
+          <div class="form-row">
+            <label>个性标签（逗号分隔，显示在状态页）</label>
+            <input v-model="form.tags_text" placeholder="例如 香港, 大带宽, 生产" />
+            <div class="tag-preview" v-if="parseTags(form.tags_text).length">
+              <span v-for="t in parseTags(form.tags_text)" :key="t" class="tag" :style="tagStyle(t)">{{ t }}</span>
+            </div>
+          </div>
           <div class="form-row">
             <label>到期时间（留空 = 不设置，用于到期提醒）</label>
             <input v-model="form.expire_date" type="date" />
@@ -239,5 +269,11 @@ onMounted(load)
 }
 .expiry.crit {
   color: var(--red);
+}
+.tag-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
 }
 </style>

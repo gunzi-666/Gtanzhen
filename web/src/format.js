@@ -41,3 +41,23 @@ export function barLevel(pct) {
   if (pct >= 70) return 'warn'
   return ''
 }
+
+// 标签调色板：同一标签文本永远映射到同一颜色。
+const TAG_COLORS = [
+  '#3b82f6', // blue
+  '#22c55e', // green
+  '#eab308', // yellow
+  '#ef4444', // red
+  '#a855f7', // purple
+  '#06b6d4', // cyan
+  '#f97316', // orange
+  '#ec4899', // pink
+]
+
+export function tagColor(tag) {
+  let h = 0
+  for (let i = 0; i < tag.length; i++) {
+    h = (h * 31 + tag.charCodeAt(i)) >>> 0
+  }
+  return TAG_COLORS[h % TAG_COLORS.length]
+}

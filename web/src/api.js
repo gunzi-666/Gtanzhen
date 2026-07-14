@@ -6,13 +6,16 @@ async function request(url, options = {}) {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   })
-  if (res.status === 401) {
-    throw new Error('unauthorized')
-  }
   const text = await res.text()
-  const data = text ? JSON.parse(text) : null
+  let data = null
+  try {
+    data = text ? JSON.parse(text) : null
+  } catch {
+    // 非 JSON 响应
+  }
   if (!res.ok) {
-    throw new Error((data && data.error) || res.statusText)
+    // 后端 401 会带具体原因（unauthorized / status_locked）。
+    throw new Error((data && data.error) || res.statusText || 'request failed')
   }
   return data
 }
@@ -29,6 +32,10 @@ export const fetchPublicServers = () => api.get('/api/public/servers')
 export const fetchHistory = (serverId, hours) =>
   api.get(`/api/public/history?server_id=${serverId}&hours=${hours}`)
 export const fetchMonitors = () => api.get('/api/public/monitors')
+// 状态页密码解锁。
+export const unlockStatus = (password) => api.post('/api/public/unlock', { password })
+// 站点外观（站点名/背景图）。
+export const fetchSite = () => api.get('/api/public/site')
 
 // 认证。
 export const login = (username, password) => api.post('/api/login', { username, password })

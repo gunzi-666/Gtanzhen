@@ -20,6 +20,9 @@ func (a *API) registerMonitorRoutes(mux *http.ServeMux) {
 
 // handlePublicMonitors 返回监控项及其最近一次结果，供状态页展示。
 func (a *API) handlePublicMonitors(w http.ResponseWriter, r *http.Request) {
+	if !a.requireStatusAccess(w, r) {
+		return
+	}
 	monitors, err := a.deps.Store.ListMonitors()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -52,6 +55,9 @@ func (a *API) handlePublicMonitors(w http.ResponseWriter, r *http.Request) {
 
 // handleMonitorResults 返回单个监控项的历史结果。
 func (a *API) handleMonitorResults(w http.ResponseWriter, r *http.Request) {
+	if !a.requireStatusAccess(w, r) {
+		return
+	}
 	id, err := strconv.ParseUint(r.URL.Query().Get("monitor_id"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid monitor_id")

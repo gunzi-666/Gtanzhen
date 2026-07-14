@@ -20,6 +20,34 @@
   --radius-sm: 8px;
   --ring: rgba(250, 250, 250, 0.18);
   --shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  /* 主题相关的细节色 */
+  --hover: rgba(255, 255, 255, 0.03);
+  --topbar-bg: rgba(9, 9, 11, 0.8);
+  --card-border-hover: #34343a;
+  --placeholder: #52525b;
+  --picker-filter: invert(0.7);
+}
+
+/* 亮色主题（zinc light） */
+html.light {
+  --bg: #f4f4f5;            /* zinc-100 */
+  --bg-soft: #ffffff;
+  --card: #ffffff;
+  --card-hover: #f4f4f5;
+  --border: #e4e4e7;        /* zinc-200 */
+  --input-border: #d4d4d8;  /* zinc-300 */
+  --text: #18181b;          /* zinc-900 */
+  --text-dim: #71717a;      /* zinc-500 */
+  --primary: #18181b;       /* light 主按钮：黑底白字 */
+  --primary-fg: #fafafa;
+  --muted: #f4f4f5;
+  --ring: rgba(24, 24, 27, 0.15);
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+  --hover: rgba(0, 0, 0, 0.035);
+  --topbar-bg: rgba(250, 250, 250, 0.8);
+  --card-border-hover: #d4d4d8;
+  --placeholder: #a1a1aa;
+  --picker-filter: none;
 }
 
 * {
@@ -136,13 +164,13 @@ textarea {
 }
 input::placeholder,
 textarea::placeholder {
-  color: #52525b;
+  color: var(--placeholder);
 }
 input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: #52525b;
+  border-color: var(--placeholder);
   box-shadow: 0 0 0 3px var(--ring);
 }
 select {
@@ -154,7 +182,7 @@ input[type='checkbox'] {
 /* 日期/时间原生控件的指示图标反白 */
 input[type='date']::-webkit-calendar-picker-indicator,
 input[type='time']::-webkit-calendar-picker-indicator {
-  filter: invert(0.7);
+  filter: var(--picker-filter);
   cursor: pointer;
 }
 
@@ -212,7 +240,7 @@ input[type='time']::-webkit-calendar-picker-indicator {
   justify-content: space-between;
   padding: 14px 24px;
   border-bottom: 1px solid var(--border);
-  background: rgba(9, 9, 11, 0.8);
+  background: var(--topbar-bg);
   backdrop-filter: blur(8px);
 }
 .topbar h1 {
@@ -268,7 +296,7 @@ input[type='time']::-webkit-calendar-picker-indicator {
   transition: border-color 0.15s, background 0.15s;
 }
 .card:hover {
-  border-color: #34343a;
+  border-color: var(--card-border-hover);
 }
 
 .stat-row {
@@ -325,7 +353,7 @@ tbody tr {
   transition: background 0.1s;
 }
 tbody tr:hover {
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--hover);
 }
 tbody tr:last-child td {
   border-bottom: none;
@@ -441,6 +469,19 @@ tbody tr:last-child td {
   background: var(--muted);
   border: 1px solid var(--border);
   color: var(--text-dim);
+}
+
+/* ==== 个性标签 ==== */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  padding: 0 7px;
+  border-radius: 999px;
+  border: 1px solid;
+  white-space: nowrap;
 }
 
 /* ==== 轻量 toast 提示 ==== */

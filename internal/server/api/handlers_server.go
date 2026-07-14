@@ -36,6 +36,8 @@ type publicServer struct {
 	Name       string         `json:"name"`
 	Online     bool           `json:"online"`
 	LastSeen   int64          `json:"last_seen"`
+	Tags       []string       `json:"tags"`
+	Group      string         `json:"group"`
 	Host       *publicHost    `json:"host,omitempty"`
 	Metrics    *publicMetrics `json:"metrics,omitempty"`
 	TrafficIn  uint64         `json:"traffic_in"`  // 当月入站累计字节
@@ -91,6 +93,8 @@ func (a *API) publicServers() ([]publicServer, error) {
 			Name:       srv.Name,
 			Online:     onlineByID[srv.ID],
 			LastSeen:   lastSeenByID[srv.ID],
+			Tags:       srv.Tags,
+			Group:      srv.Group,
 			Host:       hostByID[srv.ID],
 			Metrics:    metricsByID[srv.ID],
 			TrafficIn:  inB,
@@ -102,6 +106,9 @@ func (a *API) publicServers() ([]publicServer, error) {
 
 // handlePublicServers 返回状态页数据。
 func (a *API) handlePublicServers(w http.ResponseWriter, r *http.Request) {
+	if !a.requireStatusAccess(w, r) {
+		return
+	}
 	out, err := a.publicServers()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -112,6 +119,9 @@ func (a *API) handlePublicServers(w http.ResponseWriter, r *http.Request) {
 
 // handleHistory 返回单台服务器历史指标：/api/public/history?server_id=1&hours=6
 func (a *API) handleHistory(w http.ResponseWriter, r *http.Request) {
+	if !a.requireStatusAccess(w, r) {
+		return
+	}
 	id, err := strconv.ParseUint(r.URL.Query().Get("server_id"), 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid server_id")
@@ -146,19 +156,21 @@ func (a *API) handleServers(w http.ResponseWriter, r *http.Request) {
 			online[st.ServerID] = st.Online
 		}
 		type row struct {
-			ID        uint64 `json:"id"`
-			Name      string `json:"name"`
-			Secret    string `json:"secret"`
-			Note      string `json:"note"`
-			SortOrder int    `json:"sort_order"`
-			Hidden    bool   `json:"hidden"`
-			Online    bool   `json:"online"`
-			ExpiresAt int64  `json:"expires_at"`
-			CreatedAt int64  `json:"created_at"`
+			ID        uint64   `json:"id"`
+			Name      string   `json:"name"`
+			Secret    string   `json:"secret"`
+			Note      string   `json:"note"`
+			SortOrder int      `json:"sort_order"`
+			Hidden    bool     `json:"hidden"`
+			Online    bool     `json:"online"`
+			ExpiresAt int64    `json:"expires_at"`
+			Tags      []string `json:"tags"`
+			Group     string   `json:"group"`
+			CreatedAt int64    `json:"created_at"`
 		}
 		out := make([]row, 0, len(servers))
 		for _, s := range servers {
-			out = append(out, row{s.ID, s.Name, s.Secret, s.Note, s.SortOrder, s.Hidden, online[s.ID], s.ExpiresAt, s.CreatedAt})
+			out = append(out, row{s.ID, s.Name, s.Secret, s.Note, s.SortOrder, s.Hidden, online[s.ID], s.ExpiresAt, s.Tags, s.Group, s.CreatedAt})
 		}
 		writeJSON(w, http.StatusOK, out)
 	case http.MethodPost:
@@ -192,17 +204,19 @@ func (a *API) handleServerItem(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPut:
 		var body struct {
-			Name      string `json:"name"`
-			Note      string `json:"note"`
-			SortOrder int    `json:"sort_order"`
-			Hidden    bool   `json:"hidden"`
-			ExpiresAt int64  `json:"expires_at"`
+			Name      string   `json:"name"`
+			Note      string   `json:"note"`
+			SortOrder int      `json:"sort_order"`
+			Hidden    bool     `json:"hidden"`
+			ExpiresAt int64    `json:"expires_at"`
+			Tags      []string `json:"tags"`
+			Group     string   `json:"group"`
 		}
 		if err := readJSON(r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, "bad request")
 			return
 		}
-		if err := a.deps.Store.UpdateServer(id, body.Name, body.Note, body.SortOrder, body.Hidden, body.ExpiresAt); err != nil {
+		if err := a.deps.Store.UpdateServer(id, body.Name, body.Note, body.SortOrder, body.Hidden, body.ExpiresAt, body.Tags, body.Group); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}

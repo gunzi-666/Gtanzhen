@@ -24,20 +24,22 @@ type CommandDispatcher interface {
 
 // API 聚合所有 HTTP 处理器。
 type API struct {
-	deps      Deps
-	sessions  *sessionStore
-	pusher    *pusher
-	adminUser string
-	adminPass string
+	deps           Deps
+	sessions       *sessionStore
+	statusSessions *sessionStore // 状态页密码解锁会话
+	pusher         *pusher
+	adminUser      string
+	adminPass      string
 }
 
 // New 创建 API。
 func New(deps Deps, adminUser, adminPass string) *API {
 	a := &API{
-		deps:      deps,
-		sessions:  newSessionStore(),
-		adminUser: adminUser,
-		adminPass: adminPass,
+		deps:           deps,
+		sessions:       newSessionStore(),
+		statusSessions: newSessionStore(),
+		adminUser:      adminUser,
+		adminPass:      adminPass,
 	}
 	a.pusher = newPusher(a)
 	return a
@@ -54,9 +56,10 @@ func (a *API) Routes(static http.FileSystem) http.Handler {
 	// 浏览器实时推送。
 	mux.HandleFunc("/api/ws", a.pusher.handle)
 
-	// 公开接口（无需登录）。
+	// 公开接口（无需登录；开启状态页密码后需先解锁）。
 	mux.HandleFunc("/api/public/servers", a.handlePublicServers)
 	mux.HandleFunc("/api/public/history", a.handleHistory)
+	mux.HandleFunc("/api/public/unlock", a.handleStatusUnlock)
 
 	// 认证。
 	mux.HandleFunc("/api/login", a.handleLogin)

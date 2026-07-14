@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"probe/internal/server/store"
 )
@@ -109,6 +110,20 @@ func (a *API) handleExec(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "server_id and command required")
 		return
 	}
+	// 已绑定 TG 时提醒有人通过面板下发命令。
+	srvName := strconv.FormatUint(body.ServerID, 10)
+	if servers, e := a.deps.Store.ListServers(); e == nil {
+		for _, s := range servers {
+			if s.ID == body.ServerID {
+				srvName = s.Name
+				break
+			}
+		}
+	}
+	a.notifyTG("远程命令执行提醒",
+		"面板向服务器「"+srvName+"」下发了命令：\n"+body.Command+
+			"\n时间："+time.Now().Format("2006-01-02 15:04:05")+"\n来源 IP："+clientIP(r))
+
 	output, err := a.deps.Dispatcher.RunCommand(body.ServerID, body.Command, body.Timeout)
 	logEntry := store.TaskLog{ServerID: body.ServerID, Success: err == nil, Output: output}
 	resp := map[string]any{"output": output, "success": err == nil}

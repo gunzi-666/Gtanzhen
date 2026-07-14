@@ -73,6 +73,11 @@ func (p *pusher) broadcast() {
 }
 
 func (p *pusher) handle(w http.ResponseWriter, r *http.Request) {
+	// 状态页开启密码后，未解锁的浏览器不允许订阅实时推送。
+	if !p.api.statusUnlocked(r) {
+		writeError(w, http.StatusUnauthorized, "status_locked")
+		return
+	}
 	ws, err := browserUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return

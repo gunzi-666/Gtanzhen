@@ -1,6 +1,12 @@
 <script setup>
 import { computed } from 'vue'
-import { fmtBytes, fmtSpeed, fmtUptime, fmtPercent, barLevel } from '../format'
+import { fmtBytes, fmtSpeed, fmtUptime, fmtPercent, barLevel, tagColor } from '../format'
+
+// 标签配色：文字用主色，底/框用半透明。
+function tagStyle(t) {
+  const c = tagColor(t)
+  return { color: c, borderColor: c + '55', background: c + '1f' }
+}
 
 const props = defineProps({
   server: { type: Object, required: true },
@@ -30,6 +36,10 @@ const diskPct = computed(() => {
       <span class="badge" :class="server.online ? 'online' : 'offline'">
         {{ server.online ? '在线' : '离线' }}
       </span>
+    </div>
+
+    <div class="tag-row" v-if="server.tags && server.tags.length">
+      <span v-for="t in server.tags" :key="t" class="tag" :style="tagStyle(t)">{{ t }}</span>
     </div>
 
     <div class="os-line muted" v-if="host.platform">
@@ -78,6 +88,12 @@ const diskPct = computed(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
 }
 .os-line {
   font-size: 12px;
