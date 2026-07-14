@@ -3,6 +3,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -27,7 +28,13 @@ func main() {
 	adminUser := flag.String("user", envOr("PROBE_USER", "admin"), "管理员用户名")
 	adminPass := flag.String("pass", envOr("PROBE_PASS", "admin"), "管理员密码")
 	period := flag.Int("period", 2, "Agent 上报间隔（秒）")
+	showVersion := flag.Bool("version", false, "打印版本号并退出")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 
 	st, err := store.Open(*dbPath)
 	if err != nil {

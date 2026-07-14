@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -21,7 +22,13 @@ func main() {
 	flag.StringVar(&cfg.Secret, "secret", os.Getenv("PROBE_SECRET"), "本机 secret")
 	flag.IntVar(&cfg.ReportPeriod, "period", 2, "指标上报间隔（秒）")
 	flag.BoolVar(&cfg.DisableCommand, "disable-command", false, "禁用远程执行命令")
+	showVersion := flag.Bool("version", false, "打印版本号并退出")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 
 	if cfg.Secret == "" {
 		log.Fatal("secret 不能为空，请用 -secret 或环境变量 PROBE_SECRET 指定")

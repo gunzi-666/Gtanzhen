@@ -24,8 +24,9 @@ ADMIN_PASS="${ADMIN_PASS:-}"
 INSTALL_DIR="/opt/probe"
 SERVICE_NAME="probe-server"
 
-red()   { echo -e "\033[31m$*\033[0m"; }
-green() { echo -e "\033[32m$*\033[0m"; }
+red()    { echo -e "\033[31m$*\033[0m"; }
+green()  { echo -e "\033[32m$*\033[0m"; }
+yellow() { echo -e "\033[33m$*\033[0m"; }
 
 if [ "$(id -u)" != "0" ]; then
   red "请用 root 运行：sudo bash install-server.sh"
@@ -83,6 +84,13 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
+
+green "==> 安装 gtanzhen 管理命令"
+MGR_URL="https://raw.githubusercontent.com/${REPO}/main/scripts/gtanzhen.sh"
+if command -v curl >/dev/null 2>&1; then
+  curl -fsSL "$MGR_URL" -o /usr/local/bin/gtanzhen 2>/dev/null && chmod +x /usr/local/bin/gtanzhen \
+    && green "    已安装，以后输入 gtanzhen 可唤出管理菜单" || yellow "    管理命令下载失败，可稍后手动安装"
+fi
 
 green "==> 启动服务"
 systemctl daemon-reload

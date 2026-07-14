@@ -46,7 +46,20 @@ Agent (被控端)  --WebSocket-->  Server (面板)  <--HTTP/WS-->  浏览器
 sudo bash <(curl -fsSL https://raw.githubusercontent.com/gunzi-666/Gtanzhen/main/scripts/install-server.sh)
 ```
 
-可加环境变量自定义：`PORT`、`ADMIN_USER`、`ADMIN_PASS`、`REPO`、`VERSION`。脚本会下载二进制、注册 systemd 服务并启动，最后打印面板地址与管理员密码。
+可加环境变量自定义：`PORT`、`ADMIN_USER`、`ADMIN_PASS`、`REPO`、`VERSION`。脚本会下载二进制、注册 systemd 服务并启动，最后打印面板地址与管理员密码，同时安装 `gtanzhen` 管理命令。
+
+### 管理命令 gtanzhen
+
+部署面板后（或单独安装），在服务器上输入 `gtanzhen` 即可唤出交互式管理菜单：
+
+```bash
+# 若面板脚本已装则直接：
+sudo gtanzhen
+# 或单独安装管理命令：
+curl -fsSL https://raw.githubusercontent.com/gunzi-666/Gtanzhen/main/scripts/gtanzhen.sh -o gtanzhen.sh && sudo bash gtanzhen.sh
+```
+
+菜单功能：安装/升级/卸载面板与 Agent、修改面板配置（端口/账号/密码）、启停与查看实时日志、显示面板与 Agent 版本。升级会先备份旧二进制，失败自动回滚。
 
 ### 上线 Agent（Linux）
 
