@@ -71,10 +71,10 @@ function diskPct(s) {
   return t ? ((s.metrics?.disk_used || 0) / t) * 100 : 0
 }
 function osLine(s) {
-  if (!s.host) return '-'
-  const cores = cpuSummary(s.host.cpu).cores
-  const base = `${s.host.platform} · ${s.host.arch}`
-  return cores ? `${base} · ${cores} 核` : base
+  return s.host ? `${s.host.platform} · ${s.host.arch}` : '-'
+}
+function cpuCores(s) {
+  return s.host ? cpuSummary(s.host.cpu).cores : 0
 }
 
 function tagStyle(t) {
@@ -227,7 +227,7 @@ const typeLabel = { ping: 'Ping', tcping: 'TCP', http_get: 'HTTP' }
                 <div class="muted hide-sm srv-os">{{ osLine(s) }}</div>
                 <template v-if="s.online && s.metrics">
                   <div class="cell-bar">
-                    <span class="pct">{{ fmtPercent(s.metrics.cpu) }}</span>
+                    <span class="pct pct-cpu">{{ fmtPercent(s.metrics.cpu) }}<template v-if="cpuCores(s)"> · {{ cpuCores(s) }}核</template></span>
                     <div class="bar" :class="barLevel(s.metrics.cpu)"><span :style="{ width: Math.min(s.metrics.cpu, 100) + '%' }"></span></div>
                   </div>
                   <div class="cell-bar">
@@ -248,6 +248,15 @@ const typeLabel = { ping: 'Ping', tcping: 'TCP', http_get: 'HTTP' }
                   <div class="hide-sm"></div>
                   <div class="hide-sm"></div>
                 </template>
+
+                <!-- 悬浮详情：展示列表里放不下的卡片信息 -->
+                <div v-if="s.online && s.metrics && expandedId !== s.id" class="row-tip">
+                  <div class="tip-line"><span class="muted">内存</span><span>{{ fmtBytes(s.metrics.mem_used) }} / {{ fmtBytes(s.host && s.host.mem_total) }}</span></div>
+                  <div class="tip-line"><span class="muted">磁盘</span><span>{{ fmtBytes(s.metrics.disk_used) }} / {{ fmtBytes(s.host && s.host.disk_total) }}</span></div>
+                  <div class="tip-line"><span class="muted">负载</span><span>{{ (s.metrics.load1 || 0).toFixed(2) }}</span></div>
+                  <div class="tip-line" v-if="s.traffic_in || s.traffic_out"><span class="muted">月流量</span><span>↓{{ fmtBytes(s.traffic_in) }} ↑{{ fmtBytes(s.traffic_out) }}</span></div>
+                  <div class="tip-line muted tip-hint">点击行展开完整详情</div>
+                </div>
               </div>
               <ServerDetail v-if="expandedId === s.id" :server="s" class="row-detail" @click.stop />
             </template>
@@ -394,6 +403,7 @@ const typeLabel = { ping: 'Ping', tcping: 'TCP', http_get: 'HTTP' }
   border-radius: 6px;
   font-size: 13.5px;
   transition: background 0.1s;
+  position: relative;
 }
 .srv-row:hover {
   background: var(--hover);
@@ -473,6 +483,12 @@ const typeLabel = { ping: 'Ping', tcping: 'TCP', http_get: 'HTTP' }
   flex-shrink: 0;
   text-align: right;
 }
+/* CPU 列带核心数，比纯百分比宽 */
+.cell-bar .pct-cpu {
+  width: auto;
+  min-width: 44px;
+  white-space: nowrap;
+}
 .cell-bar .bar {
   flex: 1;
 }
@@ -482,6 +498,41 @@ const typeLabel = { ping: 'Ping', tcping: 'TCP', http_get: 'HTTP' }
 .row-detail {
   margin: 8px 4px 12px;
   border-radius: var(--radius);
+}
+
+/* 列表行悬浮详情 */
+.row-tip {
+  display: none;
+  position: absolute;
+  top: calc(100% - 2px);
+  left: 32px;
+  z-index: 60;
+  width: 250px;
+  padding: 12px 14px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+.srv-row:hover .row-tip {
+  display: block;
+}
+.tip-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  margin: 3px 0;
+}
+.tip-hint {
+  justify-content: center;
+  margin-top: 8px;
+  font-size: 11.5px;
+}
+@media (hover: none) {
+  .srv-row:hover .row-tip {
+    display: none; /* 触屏设备没有悬浮，避免点击时闪现 */
+  }
 }
 
 @media (max-width: 760px) {

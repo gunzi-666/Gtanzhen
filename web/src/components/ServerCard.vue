@@ -45,11 +45,11 @@ const diskPct = computed(() => {
     </div>
 
     <div class="os-line muted" v-if="host.platform">
-      {{ host.platform }} · {{ host.arch }}<template v-if="cores"> · {{ cores }} 核</template>
+      {{ host.platform }} · {{ host.arch }}
     </div>
 
     <template v-if="server.online && m.cpu !== undefined">
-      <div class="stat-row"><span>CPU</span><span>{{ fmtPercent(m.cpu) }}</span></div>
+      <div class="stat-row"><span>CPU</span><span>{{ fmtPercent(m.cpu) }}<template v-if="cores"> · {{ cores }} 核</template></span></div>
       <div class="bar" :class="barLevel(m.cpu)"><span :style="{ width: Math.min(m.cpu, 100) + '%' }"></span></div>
 
       <div class="stat-row"><span>内存</span><span>{{ fmtBytes(m.mem_used) }} / {{ fmtBytes(host.mem_total) }}</span></div>
