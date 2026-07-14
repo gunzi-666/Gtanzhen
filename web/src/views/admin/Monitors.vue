@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { api } from '../../api'
+import { confirmDialog } from '../../dialog'
 
 const monitors = ref([])
 const servers = ref([])
@@ -46,7 +47,7 @@ async function save() {
 }
 
 async function remove(m) {
-  if (!confirm(`删除监控「${m.name}」？`)) return
+  if (!(await confirmDialog(`删除监控「${m.name}」？`, { title: '删除监控', okText: '删除', danger: true }))) return
   await api.del(`/api/admin/monitors/${m.id}`)
   await load()
 }

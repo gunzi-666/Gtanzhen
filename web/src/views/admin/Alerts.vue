@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { api } from '../../api'
 import { fmtTime } from '../../format'
+import { confirmDialog } from '../../dialog'
 
 const rules = ref([])
 const notifications = ref([])
@@ -54,7 +55,7 @@ async function save() {
 }
 
 async function remove(r) {
-  if (!confirm(`删除规则「${r.name}」？`)) return
+  if (!(await confirmDialog(`删除规则「${r.name}」？`, { title: '删除告警规则', okText: '删除', danger: true }))) return
   await api.del(`/api/admin/alerts/${r.id}`)
   await load()
 }

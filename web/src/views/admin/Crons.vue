@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { api } from '../../api'
 import { fmtTime } from '../../format'
+import { confirmDialog } from '../../dialog'
 
 const crons = ref([])
 const servers = ref([])
@@ -52,7 +53,7 @@ async function save() {
 }
 
 async function remove(c) {
-  if (!confirm(`删除计划任务「${c.name}」？`)) return
+  if (!(await confirmDialog(`删除计划任务「${c.name}」？`, { title: '删除计划任务', okText: '删除', danger: true }))) return
   await api.del(`/api/admin/crons/${c.id}`)
   await load()
 }

@@ -395,6 +395,17 @@ tbody tr:last-child td {
   from { opacity: 0; transform: scale(0.97); }
   to { opacity: 1; transform: scale(1); }
 }
+/* confirmDialog/alertDialog 用的小号确认框 */
+.confirm-modal {
+  width: 380px;
+}
+.confirm-msg {
+  margin: 0 0 18px;
+  color: var(--text-dim);
+  font-size: 13.5px;
+  line-height: 1.7;
+  white-space: pre-line;
+}
 
 .form-row {
   margin-bottom: 14px;

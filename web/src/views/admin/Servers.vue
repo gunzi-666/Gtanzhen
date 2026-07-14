@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { api } from '../../api'
 import { fmtTime, tagColor } from '../../format'
 import { copyWithToast, toast } from '../../clipboard'
+import { confirmDialog } from '../../dialog'
 
 const servers = ref([])
 const showModal = ref(false)
@@ -104,7 +105,7 @@ async function save() {
 }
 
 async function remove(s) {
-  if (!confirm(`确定删除「${s.name}」及其历史数据？`)) return
+  if (!(await confirmDialog(`确定删除「${s.name}」及其历史数据？此操作不可恢复。`, { title: '删除服务器', okText: '删除', danger: true }))) return
   await api.del(`/api/admin/servers/${s.id}`)
   await load()
 }
@@ -116,7 +117,7 @@ async function copySecret(s) {
 // Agent 升级：下发后 Agent 下载最新版替换自身并重启，期间会短暂离线。
 const upgradingId = ref(0)
 async function upgradeAgent(s) {
-  if (!confirm(`向「${s.name}」下发 Agent 升级任务？\nAgent 会下载最新版并自动重启，期间短暂离线。`)) return
+  if (!(await confirmDialog(`向「${s.name}」下发 Agent 升级任务？\nAgent 会下载最新版并自动重启，期间短暂离线。`, { title: '升级 Agent', okText: '升级' }))) return
   upgradingId.value = s.id
   try {
     const res = await api.post(`/api/admin/servers/${s.id}/upgrade`, {})

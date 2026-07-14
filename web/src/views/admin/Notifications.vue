@@ -1,6 +1,8 @@
 <script setup>
 import { onMounted, ref, computed } from 'vue'
 import { api } from '../../api'
+import { toast } from '../../clipboard'
+import { confirmDialog } from '../../dialog'
 
 const list = ref([])
 const showModal = ref(false)
@@ -71,7 +73,7 @@ async function save() {
 }
 
 async function remove(n) {
-  if (!confirm(`删除通知渠道「${n.name}」？`)) return
+  if (!(await confirmDialog(`删除通知渠道「${n.name}」？`, { title: '删除通知渠道', okText: '删除', danger: true }))) return
   await api.del(`/api/admin/notifications/${n.id}`)
   await load()
 }
@@ -79,9 +81,9 @@ async function remove(n) {
 async function test(n) {
   try {
     await api.post(`/api/admin/notifications/${n.id}/test`, {})
-    alert('测试消息已发送')
+    toast('测试消息已发送')
   } catch (e) {
-    alert('发送失败：' + e.message)
+    toast('发送失败：' + e.message, 3000)
   }
 }
 

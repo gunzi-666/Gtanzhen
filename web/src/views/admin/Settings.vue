@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { api } from '../../api'
 import { toast } from '../../clipboard'
+import { confirmDialog, alertDialog } from '../../dialog'
 
 // 当前标签页。
 const tab = ref('site')
@@ -39,7 +40,7 @@ async function saveSettings() {
     toast('设置已保存')
     settings.value = await api.get('/api/admin/settings')
   } catch (e) {
-    alert('保存失败：' + e.message)
+    toast('保存失败：' + e.message, 3000)
   } finally {
     savingSettings.value = false
   }
@@ -47,7 +48,7 @@ async function saveSettings() {
 
 function toggleExpireNotify() {
   if (!settings.value.expire_notify_enabled && !security.value.tg_bound) {
-    alert('开启到期提醒前请先绑定 Telegram Bot')
+    toast('开启到期提醒前请先绑定 Telegram Bot', 2500)
     return
   }
   settings.value.expire_notify_enabled = !settings.value.expire_notify_enabled
@@ -55,7 +56,7 @@ function toggleExpireNotify() {
 
 function toggleStatusPassword() {
   if (!settings.value.status_password_enabled && !settings.value.status_password_set && !statusPassword.value) {
-    alert('请先在下方设置访问密码，再开启')
+    toast('请先在下方设置访问密码，再开启', 2500)
     return
   }
   settings.value.status_password_enabled = !settings.value.status_password_enabled
@@ -74,7 +75,7 @@ async function loadSecurity() {
 
 async function sendBindCode() {
   if (!tgForm.value.bot_token.trim() || !tgForm.value.chat_id.trim()) {
-    alert('请填写 Bot Token 和 Chat ID')
+    toast('请填写 Bot Token 和 Chat ID', 2500)
     return
   }
   tgSending.value = true
@@ -83,7 +84,7 @@ async function sendBindCode() {
     tgCodeSent.value = true
     toast('验证码已发送到 Telegram')
   } catch (e) {
-    alert(e.message)
+    toast(e.message, 3000)
   } finally {
     tgSending.value = false
   }
@@ -99,12 +100,12 @@ async function confirmBind() {
     tgForm.value = { bot_token: '', chat_id: '' }
     await loadSecurity()
   } catch (e) {
-    alert(e.message)
+    toast(e.message, 3000)
   }
 }
 
 async function unbind() {
-  if (!confirm('确定解除 Telegram 绑定？解绑后将无法修改密码。')) return
+  if (!(await confirmDialog('确定解除 Telegram 绑定？解绑后将无法修改密码。', { title: '解除绑定', okText: '解绑', danger: true }))) return
   await api.post('/api/admin/tg/unbind', {})
   await loadSecurity()
 }
@@ -121,7 +122,7 @@ async function sendAcCode() {
     acCodeSent.value = true
     toast('验证码已发送到 Telegram')
   } catch (e) {
-    alert(e.message)
+    toast(e.message, 3000)
   } finally {
     acSending.value = false
   }
@@ -130,7 +131,7 @@ async function sendAcCode() {
 async function changeAccount() {
   const f = acForm.value
   if (!f.new_username.trim() || !f.password || !f.code.trim()) {
-    alert('请填写完整')
+    toast('请填写完整', 2500)
     return
   }
   try {
@@ -139,10 +140,10 @@ async function changeAccount() {
       password: f.password,
       code: f.code.trim(),
     })
-    alert('用户名已修改，请重新登录')
+    await alertDialog('用户名已修改，请重新登录。', { title: '修改成功' })
     location.hash = '#/login'
   } catch (e) {
-    alert(e.message)
+    toast(e.message, 3000)
   }
 }
 
@@ -158,7 +159,7 @@ async function sendPwCode() {
     pwCodeSent.value = true
     toast('验证码已发送到 Telegram')
   } catch (e) {
-    alert(e.message)
+    toast(e.message, 3000)
   } finally {
     pwSending.value = false
   }
@@ -167,15 +168,15 @@ async function sendPwCode() {
 async function changePassword() {
   const f = pwForm.value
   if (!f.old_password || !f.new_password || !f.code.trim()) {
-    alert('请填写完整')
+    toast('请填写完整', 2500)
     return
   }
   if (f.new_password.length < 8) {
-    alert('新密码至少 8 位')
+    toast('新密码至少 8 位', 2500)
     return
   }
   if (f.new_password !== f.new_password2) {
-    alert('两次输入的新密码不一致')
+    toast('两次输入的新密码不一致', 2500)
     return
   }
   try {
@@ -184,10 +185,10 @@ async function changePassword() {
       new_password: f.new_password,
       code: f.code.trim(),
     })
-    alert('密码已修改，请重新登录')
+    await alertDialog('密码已修改，请重新登录。', { title: '修改成功' })
     location.hash = '#/login'
   } catch (e) {
-    alert(e.message)
+    toast(e.message, 3000)
   }
 }
 
