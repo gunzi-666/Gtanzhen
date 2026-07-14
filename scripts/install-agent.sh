@@ -74,12 +74,15 @@ green "==> 创建目录 ${INSTALL_DIR}"
 mkdir -p "$INSTALL_DIR"
 
 green "==> 下载 Agent 二进制 ${BIN_NAME}"
+# 先下到临时文件再 mv 原子替换：直接覆盖运行中的二进制会报 Text file busy。
+TMP_BIN="${INSTALL_DIR}/probe-agent.tmp"
 if command -v curl >/dev/null 2>&1; then
-  curl -fL "$URL" -o "${INSTALL_DIR}/probe-agent"
+  curl -fL "$URL" -o "$TMP_BIN"
 else
-  wget -O "${INSTALL_DIR}/probe-agent" "$URL"
+  wget -O "$TMP_BIN" "$URL"
 fi
-chmod +x "${INSTALL_DIR}/probe-agent"
+chmod +x "$TMP_BIN"
+mv -f "$TMP_BIN" "${INSTALL_DIR}/probe-agent"
 
 green "==> 写入 systemd 服务 ${SERVICE_NAME}"
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
