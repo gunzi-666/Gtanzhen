@@ -70,6 +70,7 @@ func (a *API) Routes(static http.FileSystem) http.Handler {
 	// 管理接口（需登录）。
 	mux.Handle("/api/admin/servers", a.auth(http.HandlerFunc(a.handleServers)))
 	mux.Handle("/api/admin/servers/", a.auth(http.HandlerFunc(a.handleServerItem)))
+	mux.Handle("/api/admin/agent-latest", a.auth(http.HandlerFunc(a.handleAgentLatest)))
 
 	a.registerAlertRoutes(mux)
 	a.registerMonitorRoutes(mux)

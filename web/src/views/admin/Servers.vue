@@ -21,12 +21,23 @@ function parseTags(text) {
 }
 
 const settings = ref({ github_repo: '', public_ws_url: '', agent_name: '' })
+// 最新 Agent 版本（来自 GitHub Release），已是最新的机器不显示升级按钮。
+const latestVersion = ref('')
 
 async function load() {
   ;[servers.value, settings.value] = await Promise.all([
     api.get('/api/admin/servers'),
     api.get('/api/admin/settings'),
   ])
+  // 单独请求：GitHub 查询可能慢或失败，不拖累列表加载。
+  api.get('/api/admin/agent-latest')
+    .then((r) => { latestVersion.value = r.version || '' })
+    .catch(() => {})
+}
+
+// 是否已是最新版（最新版本未知时视为“不确定”，按钮保留）。
+function isLatest(s) {
+  return latestVersion.value && s.agent_version === latestVersion.value
 }
 
 // 面板对外 WS 地址：优先用设置，否则用浏览器当前访问的地址自动推导。
@@ -163,7 +174,9 @@ onMounted(load)
             <td>
               <span class="badge" :class="s.online ? 'online' : 'offline'">{{ s.online ? '在线' : '离线' }}</span>
             </td>
-            <td class="muted">{{ s.agent_version || '-' }}</td>
+            <td class="muted">
+              {{ s.agent_version || '-' }}<span v-if="isLatest(s)" class="latest-mark" title="已是最新版本">✓</span>
+            </td>
             <td>
               <template v-if="expiryInfo(s)">
                 <span class="expiry" :class="expiryInfo(s).cls">{{ tsToDate(s.expires_at) }}（{{ expiryInfo(s).text }}）</span>
@@ -178,7 +191,7 @@ onMounted(load)
             <td class="muted">{{ fmtTime(s.created_at) }}</td>
             <td class="row-actions">
               <button class="ghost small" @click="copyCmd(s)">一键命令</button>
-              <button class="ghost small" :disabled="!s.online || upgradingId === s.id" @click="upgradeAgent(s)">
+              <button v-if="!isLatest(s)" class="ghost small" :disabled="!s.online || upgradingId === s.id" @click="upgradeAgent(s)">
                 {{ upgradingId === s.id ? '升级中…' : '升级' }}
               </button>
               <button class="ghost small" @click="openEdit(s)">编辑</button>
@@ -285,6 +298,11 @@ onMounted(load)
 }
 .expiry {
   font-size: 13px;
+}
+.latest-mark {
+  color: var(--green);
+  margin-left: 4px;
+  font-weight: 600;
 }
 .expiry.warn {
   color: var(--yellow);

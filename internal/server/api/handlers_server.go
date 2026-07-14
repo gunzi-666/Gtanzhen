@@ -267,6 +267,10 @@ func (a *API) handleAgentUpgrade(w http.ResponseWriter, r *http.Request, id uint
 		writeError(w, http.StatusConflict, "尚未收到该服务器的主机信息，请稍后重试")
 		return
 	}
+	if latest := a.latestAgentVersion(); latest != "" && st.AgentVersion == latest {
+		writeError(w, http.StatusConflict, "Agent 已是最新版本 "+latest+"，无需升级")
+		return
+	}
 	bin := fmt.Sprintf("probe-agent-%s-%s", st.Host.OS, st.Host.Arch)
 	if st.Host.OS == "windows" {
 		bin += ".exe"
