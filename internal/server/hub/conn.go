@@ -96,10 +96,16 @@ func (h *Hub) register(c *conn, name string) {
 		s = &State{ServerID: c.serverID}
 		h.states[c.serverID] = s
 	}
+	// 只在「已知离线 → 在线」的边沿触发上线回调；
+	// 面板刚启动时 states 为空，此时全量接入不算恢复上线，避免批量误报。
+	wasOffline := ok && !s.Online
 	s.Name = name
 	s.Online = true
 	s.LastSeen = time.Now()
 	s.connID = c.connID
+	if wasOffline {
+		h.fireOnline(c.serverID)
+	}
 }
 
 // unregister 注销连接（仅当仍是当前连接时才置离线）。
@@ -144,6 +150,9 @@ func (h *Hub) touch(id uint64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if s, ok := h.states[id]; ok {
+		if !s.Online {
+			h.fireOnline(id)
+		}
 		s.Online = true
 		s.LastSeen = time.Now()
 	}
@@ -162,6 +171,9 @@ func (h *Hub) setMetrics(id uint64, m *protocol.Metrics) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if s, ok := h.states[id]; ok {
+		if !s.Online {
+			h.fireOnline(id)
+		}
 		s.Metrics = m
 		s.Online = true
 		s.LastSeen = time.Now()

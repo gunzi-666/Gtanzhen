@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue'
-import { fmtBytes, fmtSpeed, fmtUptime, fmtPercent, barLevel, tagColor } from '../format'
+import { fmtBytes, fmtSpeed, fmtUptime, fmtPercent, barLevel, tagColor, cpuSummary } from '../format'
 
 // 标签配色：文字用主色，底/框用半透明。
 function tagStyle(t) {
@@ -15,6 +15,8 @@ defineEmits(['open'])
 
 const m = computed(() => props.server.metrics || {})
 const host = computed(() => props.server.host || {})
+
+const cores = computed(() => cpuSummary(host.value.cpu).cores)
 
 const memPct = computed(() => {
   const t = host.value.mem_total
@@ -43,7 +45,7 @@ const diskPct = computed(() => {
     </div>
 
     <div class="os-line muted" v-if="host.platform">
-      {{ host.platform }} · {{ host.arch }}
+      {{ host.platform }} · {{ host.arch }}<template v-if="cores"> · {{ cores }} 核</template>
     </div>
 
     <template v-if="server.online && m.cpu !== undefined">

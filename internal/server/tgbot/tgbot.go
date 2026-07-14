@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"probe/internal/protocol"
 	"probe/internal/server/hub"
 	"probe/internal/server/store"
 )
@@ -163,6 +164,7 @@ func serverNames(st *store.Store) string {
 	return b.String()
 }
 
+// overview 汇总所有在线服务器的资源占用，不逐台罗列。
 func overview(st *store.Store, h *hub.Hub) string {
 	servers, err := st.ListServers()
 	if err != nil {
@@ -175,27 +177,77 @@ func overview(st *store.Store, h *hub.Hub) string {
 	for _, s := range h.Snapshot() {
 		states[s.ServerID] = s
 	}
-	online := 0
-	var b strings.Builder
+
+	var (
+		online              int
+		totalCores          int
+		usedCores           float64 // 各服务器 cpu% × 核数 的累加，用于算加权总占用
+		memTotal, memUsed   uint64
+		diskTotal, diskUsed uint64
+		netIn, netOut       uint64 // 实时速率总和 B/s
+		trafIn, trafOut     uint64 // 本月流量总和
+	)
+	ym := time.Now().Format("2006-01")
 	for _, s := range servers {
+		in, out := st.TrafficMonth(s.ID, ym)
+		trafIn += in
+		trafOut += out
+
 		stt, ok := states[s.ID]
-		if ok && stt.Online {
-			online++
-			m := stt.Metrics
-			if m != nil {
-				memPct := 0.0
-				if stt.Host != nil && stt.Host.MemTotal > 0 {
-					memPct = float64(m.MemUsed) / float64(stt.Host.MemTotal) * 100
-				}
-				fmt.Fprintf(&b, "🟢 %s  CPU %.0f%%  内存 %.0f%%  ↑%s\n", s.Name, m.CPU, memPct, fmtUptime(m.Uptime))
-			} else {
-				fmt.Fprintf(&b, "🟢 %s  （暂无指标）\n", s.Name)
-			}
-		} else {
-			fmt.Fprintf(&b, "🔴 %s  离线\n", s.Name)
+		if !ok || !stt.Online {
+			continue
+		}
+		online++
+		cores := hostCores(stt.Host)
+		totalCores += cores
+		if stt.Host != nil {
+			memTotal += stt.Host.MemTotal
+			diskTotal += stt.Host.DiskTotal
+		}
+		if m := stt.Metrics; m != nil {
+			usedCores += m.CPU / 100 * float64(cores)
+			memUsed += m.MemUsed
+			diskUsed += m.DiskUsed
+			netIn += m.NetInSpeed
+			netOut += m.NetOutSpeed
 		}
 	}
-	return fmt.Sprintf("服务器总览（%d/%d 在线）\n\n%s", online, len(servers), b.String())
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "服务器总览\n\n")
+	fmt.Fprintf(&b, "服务器：%d 台（🟢 %d 在线 / 🔴 %d 离线）\n", len(servers), online, len(servers)-online)
+	if totalCores > 0 {
+		fmt.Fprintf(&b, "CPU：%d 核，总占用 %.1f%%\n", totalCores, usedCores/float64(totalCores)*100)
+	}
+	if memTotal > 0 {
+		fmt.Fprintf(&b, "内存：%s / %s（%.1f%%）\n", fmtBytes(memUsed), fmtBytes(memTotal),
+			float64(memUsed)/float64(memTotal)*100)
+	}
+	if diskTotal > 0 {
+		fmt.Fprintf(&b, "磁盘：%s / %s（%.1f%%）\n", fmtBytes(diskUsed), fmtBytes(diskTotal),
+			float64(diskUsed)/float64(diskTotal)*100)
+	}
+	fmt.Fprintf(&b, "网速：↓%s/s ↑%s/s\n", fmtBytes(netIn), fmtBytes(netOut))
+	fmt.Fprintf(&b, "本月流量：↓%s ↑%s", fmtBytes(trafIn), fmtBytes(trafOut))
+	return b.String()
+}
+
+// hostCores 从上报的 CPU 描述（"型号 N Cores" xM 条）里累加核心数。
+func hostCores(hi *protocol.HostInfo) int {
+	if hi == nil {
+		return 0
+	}
+	total := 0
+	for _, s := range hi.CPU {
+		fields := strings.Fields(s)
+		// 末尾两段固定是 "N Cores"。
+		if len(fields) >= 2 && strings.HasPrefix(strings.ToLower(fields[len(fields)-1]), "core") {
+			if n, err := strconv.Atoi(fields[len(fields)-2]); err == nil {
+				total += n
+			}
+		}
+	}
+	return total
 }
 
 func serverDetail(st *store.Store, h *hub.Hub, arg string) string {
@@ -227,16 +279,7 @@ func serverDetail(st *store.Store, h *hub.Hub, arg string) string {
 
 	stt, ok := h.StateOf(target.ID)
 	var b strings.Builder
-	fmt.Fprintf(&b, "服务器：%s (ID %d)\n", target.Name, target.ID)
-	if target.Group != "" {
-		fmt.Fprintf(&b, "分组：%s\n", target.Group)
-	}
-	if len(target.Tags) > 0 {
-		fmt.Fprintf(&b, "标签：%s\n", strings.Join(target.Tags, "、"))
-	}
-	if target.ExpiresAt > 0 {
-		fmt.Fprintf(&b, "到期：%s\n", time.Unix(target.ExpiresAt, 0).Format("2006-01-02"))
-	}
+	fmt.Fprintf(&b, "名称：%s (ID %d)\n", target.Name, target.ID)
 	if !ok || !stt.Online {
 		b.WriteString("状态：🔴 离线\n")
 		if ok && !stt.LastSeen.IsZero() {
@@ -245,27 +288,23 @@ func serverDetail(st *store.Store, h *hub.Hub, arg string) string {
 		return b.String()
 	}
 	b.WriteString("状态：🟢 在线\n")
-	if hi := stt.Host; hi != nil {
-		fmt.Fprintf(&b, "系统：%s · %s\n", hi.Platform, hi.Arch)
-	}
 	if m := stt.Metrics; m != nil {
-		fmt.Fprintf(&b, "CPU：%.1f%%\n", m.CPU)
+		if cores := hostCores(stt.Host); cores > 0 {
+			fmt.Fprintf(&b, "CPU：%.1f%%（%d 核）\n", m.CPU, cores)
+		} else {
+			fmt.Fprintf(&b, "CPU：%.1f%%\n", m.CPU)
+		}
 		if stt.Host != nil && stt.Host.MemTotal > 0 {
 			fmt.Fprintf(&b, "内存：%s / %s（%.0f%%）\n", fmtBytes(m.MemUsed), fmtBytes(stt.Host.MemTotal),
 				float64(m.MemUsed)/float64(stt.Host.MemTotal)*100)
 		}
+		fmt.Fprintf(&b, "网络：↓%s/s ↑%s/s\n", fmtBytes(m.NetInSpeed), fmtBytes(m.NetOutSpeed))
 		if stt.Host != nil && stt.Host.DiskTotal > 0 {
 			fmt.Fprintf(&b, "磁盘：%s / %s（%.0f%%）\n", fmtBytes(m.DiskUsed), fmtBytes(stt.Host.DiskTotal),
 				float64(m.DiskUsed)/float64(stt.Host.DiskTotal)*100)
 		}
-		fmt.Fprintf(&b, "网速：↓%s/s ↑%s/s\n", fmtBytes(m.NetInSpeed), fmtBytes(m.NetOutSpeed))
-		fmt.Fprintf(&b, "负载：%.2f\n", m.Load1)
-		fmt.Fprintf(&b, "进程：%d  TCP 连接：%d\n", m.ProcessCount, m.TCPConnCount)
 		fmt.Fprintf(&b, "开机：%s\n", fmtUptime(m.Uptime))
 	}
-	ym := time.Now().Format("2006-01")
-	in, out := st.TrafficMonth(target.ID, ym)
-	fmt.Fprintf(&b, "本月流量：↓%s ↑%s\n", fmtBytes(in), fmtBytes(out))
 	return b.String()
 }
 

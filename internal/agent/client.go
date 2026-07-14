@@ -78,6 +78,18 @@ func (c *Client) connectOnce(ctx context.Context) error {
 	c.conn = conn
 	c.mu.Unlock()
 
+	// ReadMessage 不感知 ctx，收到退出信号时主动关连接让它立即返回，
+	// 否则 systemctl stop 会一直等到超时被 SIGKILL。
+	watchDone := make(chan struct{})
+	defer close(watchDone)
+	go func() {
+		select {
+		case <-ctx.Done():
+			conn.Close()
+		case <-watchDone:
+		}
+	}()
+
 	// 认证。
 	auth := protocol.AuthRequest{Secret: c.cfg.Secret, AgentVersion: Version}
 	if err := c.send(protocol.TypeAuth, "", auth); err != nil {

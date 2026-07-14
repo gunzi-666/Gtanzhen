@@ -56,6 +56,9 @@ func main() {
 	h.OfflineWatcher(func(serverID uint64) {
 		engine.OnOffline(serverID)
 	})
+	h.SetOnlineHandler(func(serverID uint64) {
+		engine.OnOnline(serverID)
+	})
 
 	// 任务管理器：下发探测/命令并回收结果。
 	tm := task.NewManager(h, st.SecretOf)

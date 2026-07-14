@@ -92,6 +92,7 @@ Type=simple
 ExecStart=${INSTALL_DIR}/probe-agent -server "${SERVER}" -secret "${SECRET}" ${DISABLE_COMMAND}
 Restart=always
 RestartSec=5
+TimeoutStopSec=10
 
 [Install]
 WantedBy=multi-user.target

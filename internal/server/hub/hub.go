@@ -38,6 +38,7 @@ type Hub struct {
 	auth          Authenticator
 	onMetrics     MetricsHandler
 	onTaskResult  TaskResultHandler
+	onOnline      func(serverID uint64) // 服务器由离线转在线时回调
 	reportPeriod  int
 	offlineAfter  time.Duration
 }
@@ -58,6 +59,16 @@ func (h *Hub) SetMetricsHandler(fn MetricsHandler) { h.onMetrics = fn }
 
 // SetTaskResultHandler 注册任务结果回调。
 func (h *Hub) SetTaskResultHandler(fn TaskResultHandler) { h.onTaskResult = fn }
+
+// SetOnlineHandler 注册上线回调（离线→在线的边沿触发）。
+func (h *Hub) SetOnlineHandler(fn func(serverID uint64)) { h.onOnline = fn }
+
+// fireOnline 在异步 goroutine 中触发上线回调，调用方可持锁调用。
+func (h *Hub) fireOnline(id uint64) {
+	if h.onOnline != nil {
+		go h.onOnline(id)
+	}
+}
 
 // Snapshot 返回所有服务器当前状态的拷贝，供 API 读取。
 func (h *Hub) Snapshot() []State {

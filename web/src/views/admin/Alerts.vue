@@ -61,8 +61,11 @@ async function remove(r) {
 
 const metricLabel = {
   cpu: 'CPU 使用率(%)', mem: '内存使用率(%)', disk: '磁盘使用率(%)',
-  load1: '1分钟负载', net_in: '入站速率(B/s)', net_out: '出站速率(B/s)', offline: '离线',
+  load1: '1分钟负载', net_in: '入站速率(B/s)', net_out: '出站速率(B/s)',
+  offline: '离线', online: '上线',
 }
+// 无阈值/持续时间概念的事件型规则。
+const eventMetrics = ['offline', 'online']
 function notifName(id) {
   const n = notifications.value.find((x) => x.id === id)
   return n ? n.name : '无'
@@ -84,10 +87,10 @@ onMounted(load)
           <tr v-for="r in rules" :key="r.id">
             <td>{{ r.name }}</td>
             <td>
-              <span v-if="r.metric === 'offline'">服务器离线</span>
+              <span v-if="eventMetrics.includes(r.metric)">服务器{{ metricLabel[r.metric] }}</span>
               <span v-else>{{ metricLabel[r.metric] }} {{ r.operator === 'gt' ? '>' : '<' }} {{ r.threshold }}</span>
             </td>
-            <td>{{ r.metric === 'offline' ? '-' : r.duration + 's' }}</td>
+            <td>{{ eventMetrics.includes(r.metric) ? '-' : r.duration + 's' }}</td>
             <td class="muted">{{ r.server_ids ? r.server_ids : '全部' }}</td>
             <td class="muted">{{ notifName(r.notification_id) }}</td>
             <td><span class="badge" :class="r.enabled ? 'online' : 'offline'">{{ r.enabled ? '启用' : '停用' }}</span></td>
@@ -130,9 +133,10 @@ onMounted(load)
             <option value="net_in">入站速率(B/s)</option>
             <option value="net_out">出站速率(B/s)</option>
             <option value="offline">服务器离线</option>
+            <option value="online">服务器上线</option>
           </select>
         </div>
-        <template v-if="form.metric !== 'offline'">
+        <template v-if="!eventMetrics.includes(form.metric)">
           <div class="form-row inline">
             <div>
               <label>比较</label>

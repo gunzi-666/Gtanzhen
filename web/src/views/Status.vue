@@ -1,7 +1,7 @@
 <script setup>
 import { onMounted, onBeforeUnmount, ref, computed } from 'vue'
 import { fetchPublicServers, fetchMonitors, openLiveSocket, unlockStatus, fetchSite } from '../api'
-import { fmtBytes, fmtSpeed, fmtUptime, fmtPercent, barLevel, tagColor } from '../format'
+import { fmtBytes, fmtSpeed, fmtUptime, fmtPercent, barLevel, tagColor, cpuSummary } from '../format'
 import { getTheme, toggleTheme } from '../theme'
 import ServerCard from '../components/ServerCard.vue'
 import ServerDetail from '../components/ServerDetail.vue'
@@ -69,6 +69,12 @@ function memPct(s) {
 function diskPct(s) {
   const t = s.host && s.host.disk_total
   return t ? ((s.metrics?.disk_used || 0) / t) * 100 : 0
+}
+function osLine(s) {
+  if (!s.host) return '-'
+  const cores = cpuSummary(s.host.cpu).cores
+  const base = `${s.host.platform} · ${s.host.arch}`
+  return cores ? `${base} · ${cores} 核` : base
 }
 
 function tagStyle(t) {
@@ -218,7 +224,7 @@ const typeLabel = { ping: 'Ping', tcping: 'TCP', http_get: 'HTTP' }
                   <span class="srv-name-text">{{ s.name }}</span>
                   <span v-for="t in (s.tags || [])" :key="t" class="tag hide-sm" :style="tagStyle(t)">{{ t }}</span>
                 </div>
-                <div class="muted hide-sm srv-os">{{ s.host ? `${s.host.platform} · ${s.host.arch}` : '-' }}</div>
+                <div class="muted hide-sm srv-os">{{ osLine(s) }}</div>
                 <template v-if="s.online && s.metrics">
                   <div class="cell-bar">
                     <span class="pct">{{ fmtPercent(s.metrics.cpu) }}</span>

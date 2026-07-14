@@ -42,6 +42,32 @@ export function barLevel(pct) {
   return ''
 }
 
+// CPU 信息汇总：Agent 上报形如 ["Model 1 Cores", "Model 1 Cores", ...]（KVM 上
+// 常见每个虚拟 socket 一条），这里合并同型号并累加核数。
+export function cpuSummary(arr) {
+  if (!arr || !arr.length) return { text: '', cores: 0 }
+  const map = new Map()
+  let total = 0
+  for (const s of arr) {
+    const m = String(s).match(/^(.*?)\s*(\d+)\s+Cores?$/i)
+    if (m) {
+      const name = m[1].trim()
+      const n = Number(m[2])
+      map.set(name, (map.get(name) || 0) + n)
+      total += n
+    } else {
+      map.set(String(s), map.get(String(s)) || 0)
+    }
+  }
+  const text = [...map.entries()]
+    .map(([name, cores]) => {
+      if (!cores) return name
+      return name ? `${name} · ${cores} 核` : `${cores} 核`
+    })
+    .join(' / ')
+  return { text, cores: total }
+}
+
 // 标签调色板：同一标签文本永远映射到同一颜色。
 const TAG_COLORS = [
   '#3b82f6', // blue

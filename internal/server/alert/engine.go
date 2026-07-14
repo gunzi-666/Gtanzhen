@@ -45,7 +45,7 @@ func (e *Engine) OnMetrics(serverID uint64, m protocol.Metrics) {
 	}
 	st, _ := e.hub.StateOf(serverID)
 	for _, r := range rules {
-		if !r.Enabled || r.Metric == "offline" || !r.Matches(serverID) {
+		if !r.Enabled || r.Metric == "offline" || r.Metric == "online" || !r.Matches(serverID) {
 			continue
 		}
 		value, ok := metricValue(r.Metric, m, st.Host)
@@ -69,6 +69,22 @@ func (e *Engine) OnOffline(serverID uint64) {
 		}
 		msg := fmt.Sprintf("服务器 %s 已离线", nameOr(st.Name, serverID))
 		e.fire(r, serverID, "triggered", msg)
+	}
+}
+
+// OnOnline 服务器由离线转在线时评估 online 规则。
+func (e *Engine) OnOnline(serverID uint64) {
+	rules, err := e.store.ListAlertRules()
+	if err != nil {
+		return
+	}
+	st, _ := e.hub.StateOf(serverID)
+	for _, r := range rules {
+		if !r.Enabled || r.Metric != "online" || !r.Matches(serverID) {
+			continue
+		}
+		msg := fmt.Sprintf("服务器 %s 已上线", nameOr(st.Name, serverID))
+		e.fire(r, serverID, "resolved", msg)
 	}
 }
 

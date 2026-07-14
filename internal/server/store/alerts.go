@@ -7,7 +7,7 @@ import (
 )
 
 // AlertRule 告警规则。
-// Metric 可选：cpu / mem / disk / load1 / net_in / net_out / offline。
+// Metric 可选：cpu / mem / disk / load1 / net_in / net_out / offline / online。
 // Operator：gt / lt。Duration：持续多少秒才触发（滑动窗口）。
 // ServerIDs 为空表示对所有服务器生效，否则为逗号分隔的 id 列表。
 type AlertRule struct {

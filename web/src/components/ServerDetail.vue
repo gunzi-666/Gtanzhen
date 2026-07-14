@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch, onMounted } from 'vue'
 import { fetchHistory } from '../api'
-import { fmtBytes, fmtSpeed, fmtUptime, fmtPercent, fmtTime } from '../format'
+import { fmtBytes, fmtSpeed, fmtUptime, fmtPercent, fmtTime, cpuSummary } from '../format'
 import HistoryChart from './HistoryChart.vue'
 
 const props = defineProps({
@@ -32,7 +32,7 @@ onMounted(loadHistory)
   <div class="card detail-panel">
     <div class="detail-meta muted" v-if="server.host">
       {{ server.host.platform }} · {{ server.host.arch }} ·
-      {{ (server.host.cpu && server.host.cpu[0]) || '' }}
+      {{ cpuSummary(server.host.cpu).text }}
     </div>
     <div class="detail-grid" v-if="server.metrics">
       <div><span class="muted">CPU</span><b>{{ fmtPercent(server.metrics.cpu) }}</b></div>
