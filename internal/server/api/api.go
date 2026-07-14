@@ -71,6 +71,7 @@ func (a *API) Routes(static http.FileSystem) http.Handler {
 	a.registerMonitorRoutes(mux)
 	a.registerCronRoutes(mux)
 	a.registerSettingsRoutes(mux)
+	a.registerSecurityRoutes(mux)
 
 	// 前端静态资源（SPA fallback）。
 	if static != nil {

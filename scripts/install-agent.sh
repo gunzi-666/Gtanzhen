@@ -1,43 +1,57 @@
 #!/usr/bin/env bash
-# 探针 Agent 一键安装上线脚本（Linux + systemd）。
+# 探针 Agent 一键安装上线脚本（Linux + systemd），支持多实例。
 #
 # 用法：
-#   sudo bash install-agent.sh <面板WS地址> <secret> [--disable-command]
-# 示例：
+#   sudo bash install-agent.sh <面板WS地址> <secret> [--disable-command] [--name 实例名]
+# 示例（默认实例）：
 #   sudo bash install-agent.sh ws://1.2.3.4:8008/api/agent 你的secret
+# 示例（第二个面板，起名 hk，可与默认实例共存）：
+#   sudo bash install-agent.sh ws://5.6.7.8:8008/api/agent 另一个secret --name hk
 #
-# 也可用环境变量：
-#   REPO     GitHub 仓库 owner/name
-#   VERSION  版本 tag（默认 latest）
-#   SERVER   面板 WS 地址
-#   SECRET   本机 secret
+# 也可用环境变量：REPO / VERSION / SERVER / SECRET / NAME
 
 set -euo pipefail
 
 REPO="${REPO:-gunzi-666/Gtanzhen}"     # GitHub 仓库 owner/name
 VERSION="${VERSION:-latest}"
-INSTALL_DIR="/opt/probe-agent"
-SERVICE_NAME="probe-agent"
 
 red()   { echo -e "\033[31m$*\033[0m"; }
 green() { echo -e "\033[32m$*\033[0m"; }
 
-# 参数解析：位置参数优先，其次环境变量。
-SERVER="${1:-${SERVER:-}}"
-SECRET="${2:-${SECRET:-}}"
+# 参数解析：位置参数（非 -- 开头）作为 server/secret，其次环境变量。
+SERVER="${SERVER:-}"
+SECRET="${SECRET:-}"
+NAME="${NAME:-}"
 DISABLE_COMMAND=""
+pos=()
+skip_next=""
 for arg in "$@"; do
-  if [ "$arg" = "--disable-command" ]; then
-    DISABLE_COMMAND="-disable-command"
-  fi
+  if [ -n "$skip_next" ]; then NAME="$arg"; skip_next=""; continue; fi
+  case "$arg" in
+    --disable-command) DISABLE_COMMAND="-disable-command" ;;
+    --name) skip_next=1 ;;
+    --name=*) NAME="${arg#--name=}" ;;
+    *) pos+=("$arg") ;;
+  esac
 done
+[ -z "$SERVER" ] && [ "${#pos[@]}" -ge 1 ] && SERVER="${pos[0]}"
+[ -z "$SECRET" ] && [ "${#pos[@]}" -ge 2 ] && SECRET="${pos[1]}"
+
+# 实例名决定服务名与安装目录，缺省为单实例 probe-agent。
+if [ -n "$NAME" ]; then
+  SERVICE_NAME="probe-agent-${NAME}"
+  INSTALL_DIR="/opt/probe-agent-${NAME}"
+else
+  SERVICE_NAME="probe-agent"
+  INSTALL_DIR="/opt/probe-agent"
+fi
 
 if [ "$(id -u)" != "0" ]; then
-  red "请用 root 运行：sudo bash install-agent.sh <面板WS地址> <secret>"
+  red "请用 root 运行：sudo bash install-agent.sh <面板WS地址> <secret> [--name 实例名]"
   exit 1
 fi
 if [ -z "$SERVER" ] || [ -z "$SECRET" ]; then
-  red "用法：sudo bash install-agent.sh <面板WS地址> <secret> [--disable-command]"
+  red "用法：sudo bash install-agent.sh <面板WS地址> <secret> [--disable-command] [--name 实例名]"
   exit 1
 fi
 
@@ -67,10 +81,10 @@ else
 fi
 chmod +x "${INSTALL_DIR}/probe-agent"
 
-green "==> 写入 systemd 服务"
+green "==> 写入 systemd 服务 ${SERVICE_NAME}"
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
 [Unit]
-Description=Probe Monitoring Agent
+Description=Probe Monitoring Agent (${NAME:-default})
 After=network.target
 
 [Service]

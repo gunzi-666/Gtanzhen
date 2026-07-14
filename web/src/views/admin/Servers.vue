@@ -8,8 +8,7 @@ const showModal = ref(false)
 const editing = ref(null)
 const form = ref({ name: '', note: '', sort_order: 0, hidden: false })
 
-const settings = ref({ github_repo: '', public_ws_url: '' })
-const showSettings = ref(false)
+const settings = ref({ github_repo: '', public_ws_url: '', agent_name: '' })
 
 async function load() {
   ;[servers.value, settings.value] = await Promise.all([
@@ -18,18 +17,13 @@ async function load() {
   ])
 }
 
-async function saveSettings() {
-  await api.put('/api/admin/settings', settings.value)
-  showSettings.value = false
-  await load()
-}
-
-// 生成某台服务器的一键安装命令。
+// 生成某台服务器的一键安装命令；设置了实例名则追加 --name。
 function installCmd(s) {
   const repo = settings.value.github_repo || 'gunzi-666/Gtanzhen'
   const ws = settings.value.public_ws_url || 'ws://面板IP:8008/api/agent'
   const script = `https://raw.githubusercontent.com/${repo}/main/scripts/install-agent.sh`
-  return `curl -fsSL ${script} -o agent.sh && sudo REPO=${repo} bash agent.sh ${ws} ${s.secret}`
+  const name = settings.value.agent_name ? ` --name ${settings.value.agent_name}` : ''
+  return `curl -fsSL ${script} -o agent.sh && sudo REPO=${repo} bash agent.sh ${ws} ${s.secret}${name}`
 }
 
 async function copyCmd(s) {
@@ -86,7 +80,7 @@ onMounted(load)
     <div class="page-head">
       <h2>服务器</h2>
       <div class="head-btns">
-        <button class="ghost" @click="showSettings = true">安装设置</button>
+        <RouterLink class="btn-like ghost" to="/admin/settings">安装设置</RouterLink>
         <button @click="openCreate">+ 添加服务器</button>
       </div>
     </div>
@@ -126,26 +120,9 @@ onMounted(load)
       <b>Agent 安装方式：</b>
       <div class="muted" style="margin:6px 0">推荐：点击每台服务器的「一键命令」，复制后在目标机器（Linux）以 root 运行，自动下载 Agent 并注册为 systemd 服务上线。</div>
       <div class="muted">手动：<code>probe-agent -server {{ settings.public_ws_url || 'ws://面板IP:8008/api/agent' }} -secret 该服务器的secret</code></div>
+      <div class="muted" style="margin-top:6px">多实例：目标机器需要连接多个面板时，在「设置」页填写 Agent 实例名，一键命令会自动追加 <code style="display:inline;padding:2px 6px">--name 实例名</code>，多个 Agent 可共存互不影响。当前实例名：<b>{{ settings.agent_name || '（默认 probe-agent）' }}</b></div>
       <div v-if="!settings.github_repo || !settings.public_ws_url" class="warn-tip">
-        提示：请先在「安装设置」里填写 GitHub 仓库与面板对外地址，一键命令才会正确。
-      </div>
-    </div>
-
-    <div v-if="showSettings" class="modal-mask" @click.self="showSettings = false">
-      <div class="modal">
-        <h3>安装设置</h3>
-        <div class="form-row">
-          <label>GitHub 仓库（owner/name，用于下载 Agent）</label>
-          <input v-model="settings.github_repo" placeholder="例如 gunzi-666/Gtanzhen" />
-        </div>
-        <div class="form-row">
-          <label>面板对外 WS 地址（Agent 连接用）</label>
-          <input v-model="settings.public_ws_url" placeholder="ws://你的面板IP:8008/api/agent" />
-        </div>
-        <div class="actions">
-          <button class="ghost" @click="showSettings = false">取消</button>
-          <button @click="saveSettings">保存</button>
-        </div>
+        提示：请先在「设置」页填写 GitHub 仓库与面板对外地址，一键命令才会正确。
       </div>
     </div>
 

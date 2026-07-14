@@ -15,6 +15,7 @@ const routes = [
       { path: 'notifications', name: 'admin-notifications', component: () => import('./views/admin/Notifications.vue') },
       { path: 'monitors', name: 'admin-monitors', component: () => import('./views/admin/Monitors.vue') },
       { path: 'crons', name: 'admin-crons', component: () => import('./views/admin/Crons.vue') },
+      { path: 'settings', name: 'admin-settings', component: () => import('./views/admin/Settings.vue') },
     ],
   },
 ]

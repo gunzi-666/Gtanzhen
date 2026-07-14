@@ -18,6 +18,7 @@ async function doLogout() {
       <RouterLink class="nav-item" to="/admin/alerts">告警规则</RouterLink>
       <RouterLink class="nav-item" to="/admin/notifications">通知渠道</RouterLink>
       <RouterLink class="nav-item" to="/admin/crons">计划任务</RouterLink>
+      <RouterLink class="nav-item" to="/admin/settings">设置</RouterLink>
       <div class="side-foot">
         <RouterLink class="nav-item" to="/">← 状态页</RouterLink>
         <a class="nav-item" href="#" @click.prevent="doLogout">退出登录</a>

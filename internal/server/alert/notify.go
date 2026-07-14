@@ -47,6 +47,12 @@ func BuildSender(n *store.Notification) (Sender, error) {
 
 var httpClient = &http.Client{Timeout: 15 * time.Second}
 
+// SendTelegram 直接用指定的 Bot 向指定会话发送一条消息（供绑定/验证码等场景复用）。
+func SendTelegram(botToken, chatID, title, body string) error {
+	c := telegramConfig{BotToken: botToken, ChatID: chatID}
+	return c.Send(title, body)
+}
+
 // telegramConfig Telegram Bot 配置。
 type telegramConfig struct {
 	BotToken string `json:"bot_token"`

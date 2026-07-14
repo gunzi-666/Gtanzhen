@@ -59,7 +59,7 @@ sudo gtanzhen
 curl -fsSL https://raw.githubusercontent.com/gunzi-666/Gtanzhen/main/scripts/gtanzhen.sh -o gtanzhen.sh && sudo bash gtanzhen.sh
 ```
 
-菜单功能：安装/升级/卸载面板与 Agent、修改面板配置（端口/账号/密码）、启停与查看实时日志、显示面板与 Agent 版本。升级会先备份旧二进制，失败自动回滚。
+菜单功能：安装/升级/卸载面板与 Agent、修改面板配置（端口/账号/密码）、启停与查看实时日志、显示面板与 Agent 版本。Agent 支持多实例（同机连多个面板），升级会先备份旧二进制，失败自动回滚。
 
 ### 上线 Agent（Linux）
 
@@ -71,6 +71,12 @@ curl -fsSL https://raw.githubusercontent.com/gunzi-666/Gtanzhen/main/scripts/ins
 ```
 
 Agent 会被注册为 `probe-agent` systemd 服务，开机自启、断线自动重连。
+
+**多实例**：同一台机器可以同时连接多个面板。给命令追加 `--name 实例名` 即可再装一份互不冲突的 Agent（服务名 `probe-agent-实例名`，目录 `/opt/probe-agent-实例名`）：
+
+```bash
+sudo REPO=owner/repo bash agent.sh ws://另一个面板IP:8008/api/agent 另一个secret --name hk
+```
 
 ## 自动构建与发布（CI）
 

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 const sessionCookie = "probe_session"
@@ -61,6 +63,13 @@ func (s *sessionStore) revoke(tok string) {
 	s.mu.Unlock()
 }
 
+// revokeAll 吊销所有会话（改密码后强制全部重新登录）。
+func (s *sessionStore) revokeAll() {
+	s.mu.Lock()
+	s.sessions = make(map[string]time.Time)
+	s.mu.Unlock()
+}
+
 // loginLimiter 简单的登录失败限速（按无差别全局计数）。
 type loginLimiter struct {
 	mu       sync.Mutex
@@ -90,6 +99,15 @@ func (l *loginLimiter) reset() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.fails = 0
+}
+
+// checkPassword 校验管理员密码：后台改过密码则用数据库里的 bcrypt 哈希，
+// 否则退回启动参数 / 环境变量里的初始密码。
+func (a *API) checkPassword(pass string) bool {
+	if hash := a.deps.Store.GetSetting(settingPassHash, ""); hash != "" {
+		return bcrypt.CompareHashAndPassword([]byte(hash), []byte(pass)) == nil
+	}
+	return subtle.ConstantTimeCompare([]byte(pass), []byte(a.adminPass)) == 1
 }
 
 // auth 是要求登录的中间件。
@@ -122,7 +140,7 @@ func (a *API) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	userOK := subtle.ConstantTimeCompare([]byte(body.Username), []byte(a.adminUser)) == 1
-	passOK := subtle.ConstantTimeCompare([]byte(body.Password), []byte(a.adminPass)) == 1
+	passOK := a.checkPassword(body.Password)
 	if !userOK || !passOK {
 		limiter.fail()
 		writeError(w, http.StatusUnauthorized, "invalid credentials")

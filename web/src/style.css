@@ -65,6 +65,22 @@ button.small {
   padding: 4px 10px;
   font-size: 13px;
 }
+/* 让链接看起来像按钮（如跳转到设置页的入口） */
+a.btn-like {
+  display: inline-block;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  text-decoration: none;
+  line-height: 1.2;
+}
+a.btn-like.ghost {
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+a.btn-like.ghost:hover {
+  filter: brightness(1.2);
+}
 
 input,
 select,
