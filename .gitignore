@@ -12,7 +12,10 @@ probe-agent.exe
 
 # 前端
 /web/node_modules/
-# 注意：web/dist 需要保留占位以支持 go:embed，构建时会被覆盖
+# dist 是构建产物不入库，只保留 .gitkeep 占位让 go:embed 能编译；
+# 发布时由 GitHub Actions / build 脚本现场构建。
+/web/dist/*
+!/web/dist/.gitkeep
 
 # 依赖缓存
 /vendor/
