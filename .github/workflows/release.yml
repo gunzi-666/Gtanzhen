@@ -1,0 +1,64 @@
+name: Release
+
+# 推送形如 v1.0.0 的 tag 时触发：构建前端 -> 交叉编译多平台二进制 -> 发布到 GitHub Release。
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend
+        working-directory: web
+        run: |
+          npm install
+          npm run build
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+
+      - name: Build binaries
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p dist-bin
+          VERSION="${GITHUB_REF_NAME}"
+          build() {
+            local os=$1 arch=$2 ext=$3 tag="$1-$2"
+            echo "building $tag"
+            GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "dist-bin/probe-server-${tag}${ext}" ./cmd/server
+            GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" \
+              -o "dist-bin/probe-agent-${tag}${ext}" ./cmd/agent
+          }
+          build linux   amd64 ""
+          build linux   arm64 ""
+          build linux   arm   ""
+          build windows amd64 ".exe"
+          build darwin  amd64 ""
+          build darwin  arm64 ""
+
+      - name: Generate checksums
+        working-directory: dist-bin
+        run: sha256sum * > checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist-bin/*
+          generate_release_notes: true

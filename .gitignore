@@ -1,0 +1,23 @@
+# 编译产物
+probe-server
+probe-server.exe
+probe-agent
+probe-agent.exe
+/dist-bin/
+
+# 数据库
+*.db
+*.db-shm
+*.db-wal
+
+# 前端
+/web/node_modules/
+# 注意：web/dist 需要保留占位以支持 go:embed，构建时会被覆盖
+
+# 依赖缓存
+/vendor/
+
+# 编辑器
+.vscode/
+.idea/
+.DS_Store

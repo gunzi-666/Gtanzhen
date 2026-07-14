@@ -1,0 +1,5 @@
+# Shell 脚本强制使用 LF 换行，否则在 Linux 上会报 bad interpreter 无法运行。
+*.sh text eol=lf
+
+# 其余文本文件交给 Git 自动处理。
+* text=auto
