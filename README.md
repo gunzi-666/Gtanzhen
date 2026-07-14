@@ -43,8 +43,10 @@ Agent (被控端)  --WebSocket-->  Server (面板)  <--HTTP/WS-->  浏览器
 ### 部署面板（Linux）
 
 ```bash
-sudo bash <(curl -fsSL https://raw.githubusercontent.com/gunzi-666/Gtanzhen/main/scripts/install-server.sh)
+curl -fsSL https://raw.githubusercontent.com/gunzi-666/Gtanzhen/main/scripts/install-server.sh -o install-server.sh && sudo bash install-server.sh
 ```
+
+> 注意：不要用 `sudo bash <(curl ...)` 的写法（sudo 会关闭进程替换的文件描述符导致报 `/dev/fd/63: No such file or directory`），也不要用 `curl | sudo bash` 管道（脚本有交互式输入）。
 
 可加环境变量自定义：`PORT`、`ADMIN_USER`、`ADMIN_PASS`、`REPO`、`VERSION`。脚本会下载二进制、注册 systemd 服务并启动，最后打印面板地址与管理员密码，同时安装 `gtanzhen` 管理命令。
 
