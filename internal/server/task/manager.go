@@ -108,6 +108,38 @@ func (m *Manager) RunCommand(serverID uint64, command string, timeout int) (stri
 	return res.Output, nil
 }
 
+// Upgrade 下发一条已签名的 Agent 自升级任务并等待结果。
+// url 是新二进制的下载地址，Agent 替换自身后退出由 systemd 拉起。
+func (m *Manager) Upgrade(serverID uint64, url string, timeout int) (string, error) {
+	secret, err := m.secretOf(serverID)
+	if err != nil {
+		return "", err
+	}
+	if timeout <= 0 {
+		timeout = 180
+	}
+	taskID := newTaskID()
+	nonce := newTaskID()
+	signTs := time.Now().Unix()
+	task := protocol.TaskDispatch{
+		TaskID:  taskID,
+		Type:    protocol.TaskUpgrade,
+		Target:  url,
+		Timeout: timeout,
+		Nonce:   nonce,
+		SignTs:  signTs,
+		Sign:    protocol.SignExec(secret, taskID, url, nonce, signTs),
+	}
+	res, err := m.dispatchAndWait(serverID, task, timeout)
+	if err != nil {
+		return "", err
+	}
+	if !res.Success {
+		return res.Output, errors.New(res.Error)
+	}
+	return res.Output, nil
+}
+
 // dispatchAndWait 送达任务并阻塞等待结果。
 func (m *Manager) dispatchAndWait(serverID uint64, task protocol.TaskDispatch, timeout int) (protocol.TaskResult, error) {
 	ch := make(chan protocol.TaskResult, 1)

@@ -109,6 +109,9 @@ const (
 	TaskHTTPGet TaskType = "http_get"
 	// TaskExecCommand 远程执行命令（高危通道）。
 	TaskExecCommand TaskType = "exec_command"
+	// TaskUpgrade Agent 自升级：下载新二进制替换自身后退出，由 systemd 拉起。
+	// 与 exec_command 一样使用 HMAC 签名防伪造，Target 为下载 URL。
+	TaskUpgrade TaskType = "upgrade"
 )
 
 // TaskDispatch 面板 -> Agent：下发的任务。

@@ -59,7 +59,7 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.register(c, name)
+	h.register(c, name, auth.AgentVersion)
 	defer h.unregister(c)
 	log.Printf("agent online: server_id=%d name=%s from %s", id, name, r.RemoteAddr)
 
@@ -80,7 +80,7 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 }
 
 // register 登记连接与初始状态；同一服务器的旧连接会被顶替。
-func (h *Hub) register(c *conn, name string) {
+func (h *Hub) register(c *conn, name, agentVersion string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.connSeq++
@@ -96,14 +96,16 @@ func (h *Hub) register(c *conn, name string) {
 		s = &State{ServerID: c.serverID}
 		h.states[c.serverID] = s
 	}
-	// 只在「已知离线 → 在线」的边沿触发上线回调；
-	// 面板刚启动时 states 为空，此时全量接入不算恢复上线，避免批量误报。
-	wasOffline := ok && !s.Online
+	// 只有发过离线告警的机器回连才触发上线回调（与离线告警对称）；
+	// 面板刚启动或快速重连（升级/网络抖动）都不算恢复上线，避免误报。
+	cameBack := ok && s.notifiedOffline
 	s.Name = name
+	s.AgentVersion = agentVersion
 	s.Online = true
 	s.LastSeen = time.Now()
 	s.connID = c.connID
-	if wasOffline {
+	s.notifiedOffline = false
+	if cameBack {
 		h.fireOnline(c.serverID)
 	}
 }
@@ -150,11 +152,12 @@ func (h *Hub) touch(id uint64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if s, ok := h.states[id]; ok {
-		if !s.Online {
+		if s.notifiedOffline {
 			h.fireOnline(id)
 		}
 		s.Online = true
 		s.LastSeen = time.Now()
+		s.notifiedOffline = false
 	}
 }
 
@@ -171,12 +174,13 @@ func (h *Hub) setMetrics(id uint64, m *protocol.Metrics) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if s, ok := h.states[id]; ok {
-		if !s.Online {
+		if s.notifiedOffline {
 			h.fireOnline(id)
 		}
 		s.Metrics = m
 		s.Online = true
 		s.LastSeen = time.Now()
+		s.notifiedOffline = false
 	}
 }
 

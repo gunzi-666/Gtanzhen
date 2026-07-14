@@ -44,6 +44,8 @@ func (e *Executor) Run(ctx context.Context, task protocol.TaskDispatch) protocol
 		e.ping(&res, task.Target, timeout)
 	case protocol.TaskExecCommand:
 		e.exec(ctx, &res, task, timeout)
+	case protocol.TaskUpgrade:
+		e.upgrade(ctx, &res, task)
 	default:
 		res.Error = "unknown task type"
 	}

@@ -20,6 +20,7 @@ type Deps struct {
 // CommandDispatcher 抽象“向某台服务器下发一次性命令并等待结果”的能力。
 type CommandDispatcher interface {
 	RunCommand(serverID uint64, command string, timeout int) (string, error)
+	Upgrade(serverID uint64, url string, timeout int) (string, error)
 }
 
 // API 聚合所有 HTTP 处理器。

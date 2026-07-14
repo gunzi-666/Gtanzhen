@@ -10,13 +10,19 @@ import (
 
 // State 是单台服务器在内存中的实时状态。
 type State struct {
-	ServerID   uint64             `json:"server_id"`
-	Name       string             `json:"name"`
-	Online     bool               `json:"online"`
-	LastSeen   time.Time          `json:"last_seen"`
-	Host       *protocol.HostInfo `json:"host,omitempty"`
-	Metrics    *protocol.Metrics  `json:"metrics,omitempty"`
-	connID     uint64             // 当前占用连接的自增 id，用于处理重复连接
+	ServerID     uint64             `json:"server_id"`
+	Name         string             `json:"name"`
+	Online       bool               `json:"online"`
+	LastSeen     time.Time          `json:"last_seen"`
+	AgentVersion string             `json:"agent_version,omitempty"`
+	Host         *protocol.HostInfo `json:"host,omitempty"`
+	Metrics      *protocol.Metrics  `json:"metrics,omitempty"`
+	connID       uint64             // 当前占用连接的自增 id，用于处理重复连接
+
+	// notifiedOffline 标记是否已发过离线告警。
+	// 断连后立即置 Online=false（界面即时反馈），但告警要等宽限期后
+	// 仍未回连才发；快速重启（升级/网络抖动）不打扰。
+	notifiedOffline bool
 }
 
 // TaskResultHandler 处理 Agent 回报的任务结果。
@@ -112,23 +118,26 @@ func (h *Hub) IsOnline(serverID uint64) bool {
 	return ok && s.Online
 }
 
-// markOffline 后台巡检把超时未上报的服务器标记为离线。
-// 返回本轮新转为离线的服务器 id 列表。
+// markOffline 后台巡检找出需要发离线告警的服务器：
+// 无论是超时未上报（连接还挂着）还是已主动断连，只要距最后一次
+// 活动超过宽限期且尚未告警过，就标记并返回。
 func (h *Hub) markOffline() []uint64 {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	var changed []uint64
 	now := time.Now()
 	for id, s := range h.states {
-		if s.Online && now.Sub(s.LastSeen) > h.offlineAfter {
-			s.Online = false
-			changed = append(changed, id)
+		if s.notifiedOffline || now.Sub(s.LastSeen) <= h.offlineAfter {
+			continue
 		}
+		s.Online = false
+		s.notifiedOffline = true
+		changed = append(changed, id)
 	}
 	return changed
 }
 
-// OfflineWatcher 启动离线巡检，onOffline 在服务器转离线时回调。
+// OfflineWatcher 启动离线巡检，onOffline 在服务器确认离线（超过宽限期）时回调。
 func (h *Hub) OfflineWatcher(onOffline func(serverID uint64)) {
 	ticker := time.NewTicker(10 * time.Second)
 	go func() {

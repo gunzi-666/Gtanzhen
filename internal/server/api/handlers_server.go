@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -150,27 +151,30 @@ func (a *API) handleServers(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		// 附带在线状态。
+		// 附带在线状态与 Agent 版本。
 		online := map[uint64]bool{}
+		version := map[uint64]string{}
 		for _, st := range a.deps.Hub.Snapshot() {
 			online[st.ServerID] = st.Online
+			version[st.ServerID] = st.AgentVersion
 		}
 		type row struct {
-			ID        uint64   `json:"id"`
-			Name      string   `json:"name"`
-			Secret    string   `json:"secret"`
-			Note      string   `json:"note"`
-			SortOrder int      `json:"sort_order"`
-			Hidden    bool     `json:"hidden"`
-			Online    bool     `json:"online"`
-			ExpiresAt int64    `json:"expires_at"`
-			Tags      []string `json:"tags"`
-			Group     string   `json:"group"`
-			CreatedAt int64    `json:"created_at"`
+			ID           uint64   `json:"id"`
+			Name         string   `json:"name"`
+			Secret       string   `json:"secret"`
+			Note         string   `json:"note"`
+			SortOrder    int      `json:"sort_order"`
+			Hidden       bool     `json:"hidden"`
+			Online       bool     `json:"online"`
+			AgentVersion string   `json:"agent_version"`
+			ExpiresAt    int64    `json:"expires_at"`
+			Tags         []string `json:"tags"`
+			Group        string   `json:"group"`
+			CreatedAt    int64    `json:"created_at"`
 		}
 		out := make([]row, 0, len(servers))
 		for _, s := range servers {
-			out = append(out, row{s.ID, s.Name, s.Secret, s.Note, s.SortOrder, s.Hidden, online[s.ID], s.ExpiresAt, s.Tags, s.Group, s.CreatedAt})
+			out = append(out, row{s.ID, s.Name, s.Secret, s.Note, s.SortOrder, s.Hidden, online[s.ID], version[s.ID], s.ExpiresAt, s.Tags, s.Group, s.CreatedAt})
 		}
 		writeJSON(w, http.StatusOK, out)
 	case http.MethodPost:
@@ -193,9 +197,19 @@ func (a *API) handleServers(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleServerItem 处理 /api/admin/servers/{id} 的 PUT(更新) 与 DELETE。
+// handleServerItem 处理 /api/admin/servers/{id} 的 PUT(更新) 与 DELETE，
+// 以及 /api/admin/servers/{id}/upgrade 的 POST(Agent 自升级)。
 func (a *API) handleServerItem(w http.ResponseWriter, r *http.Request) {
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/admin/servers/")
+	if rest, found := strings.CutSuffix(idStr, "/upgrade"); found {
+		id, err := strconv.ParseUint(rest, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid id")
+			return
+		}
+		a.handleAgentUpgrade(w, r, id)
+		return
+	}
 	id, err := strconv.ParseUint(idStr, 10, 64)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid id")
@@ -230,4 +244,48 @@ func (a *API) handleServerItem(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
+}
+
+// handleAgentUpgrade 向指定服务器下发 Agent 自升级任务。
+// 下载地址根据设置中的 GitHub 仓库与该机上报的 os/arch 自动拼出（latest release）。
+func (a *API) handleAgentUpgrade(w http.ResponseWriter, r *http.Request, id uint64) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	repo := a.deps.Store.GetSetting(settingRepo, "")
+	if repo == "" {
+		writeError(w, http.StatusBadRequest, "请先在设置页配置 GitHub 仓库（owner/name）")
+		return
+	}
+	st, ok := a.deps.Hub.StateOf(id)
+	if !ok || !st.Online {
+		writeError(w, http.StatusConflict, "服务器不在线，无法升级")
+		return
+	}
+	if st.Host == nil {
+		writeError(w, http.StatusConflict, "尚未收到该服务器的主机信息，请稍后重试")
+		return
+	}
+	bin := fmt.Sprintf("probe-agent-%s-%s", st.Host.OS, st.Host.Arch)
+	if st.Host.OS == "windows" {
+		bin += ".exe"
+	}
+	url := fmt.Sprintf("https://github.com/%s/releases/latest/download/%s", repo, bin)
+
+	srvName := st.Name
+	a.notifyTG("Agent 升级提醒",
+		"面板向服务器「"+srvName+"」下发了 Agent 升级任务。\n时间："+time.Now().Format("2006-01-02 15:04:05")+
+			"\n来源 IP："+clientIP(r))
+
+	output, err := a.deps.Dispatcher.Upgrade(id, url, 180)
+	if err != nil {
+		msg := err.Error()
+		if output != "" {
+			msg += "：" + output
+		}
+		writeError(w, http.StatusBadGateway, msg)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "output": output})
 }

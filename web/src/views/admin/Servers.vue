@@ -2,7 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { api } from '../../api'
 import { fmtTime, tagColor } from '../../format'
-import { copyWithToast } from '../../clipboard'
+import { copyWithToast, toast } from '../../clipboard'
 
 const servers = ref([])
 const showModal = ref(false)
@@ -113,6 +113,23 @@ async function copySecret(s) {
   await copyWithToast(s.secret, 'secret 已复制')
 }
 
+// Agent 升级：下发后 Agent 下载最新版替换自身并重启，期间会短暂离线。
+const upgradingId = ref(0)
+async function upgradeAgent(s) {
+  if (!confirm(`向「${s.name}」下发 Agent 升级任务？\nAgent 会下载最新版并自动重启，期间短暂离线。`)) return
+  upgradingId.value = s.id
+  try {
+    const res = await api.post(`/api/admin/servers/${s.id}/upgrade`, {})
+    toast(res.output || '升级任务已完成，Agent 正在重启')
+    // 等 Agent 重启回连后刷新版本号。
+    setTimeout(load, 8000)
+  } catch (e) {
+    toast('升级失败：' + (e.message || e), 3500)
+  } finally {
+    upgradingId.value = 0
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -130,7 +147,7 @@ onMounted(load)
       <table>
         <thead>
           <tr>
-            <th>ID</th><th>名称</th><th>状态</th><th>到期</th><th>备注</th><th>Secret</th><th>创建时间</th><th></th>
+            <th>ID</th><th>名称</th><th>状态</th><th>版本</th><th>到期</th><th>备注</th><th>Secret</th><th>创建时间</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -145,6 +162,7 @@ onMounted(load)
             <td>
               <span class="badge" :class="s.online ? 'online' : 'offline'">{{ s.online ? '在线' : '离线' }}</span>
             </td>
+            <td class="muted">{{ s.agent_version || '-' }}</td>
             <td>
               <template v-if="expiryInfo(s)">
                 <span class="expiry" :class="expiryInfo(s).cls">{{ tsToDate(s.expires_at) }}（{{ expiryInfo(s).text }}）</span>
@@ -159,11 +177,14 @@ onMounted(load)
             <td class="muted">{{ fmtTime(s.created_at) }}</td>
             <td class="row-actions">
               <button class="ghost small" @click="copyCmd(s)">一键命令</button>
+              <button class="ghost small" :disabled="!s.online || upgradingId === s.id" @click="upgradeAgent(s)">
+                {{ upgradingId === s.id ? '升级中…' : '升级' }}
+              </button>
               <button class="ghost small" @click="openEdit(s)">编辑</button>
               <button class="danger small" @click="remove(s)">删除</button>
             </td>
           </tr>
-          <tr v-if="servers.length === 0"><td colspan="8" class="muted" style="text-align:center">暂无服务器</td></tr>
+          <tr v-if="servers.length === 0"><td colspan="9" class="muted" style="text-align:center">暂无服务器</td></tr>
         </tbody>
       </table>
     </div>

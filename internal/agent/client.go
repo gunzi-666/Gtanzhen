@@ -11,8 +11,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-// Version 是 Agent 版本号。
-const Version = "0.1.0"
+// Version 是 Agent 版本号，由 cmd/agent 在启动时用构建注入的版本覆盖。
+var Version = "dev"
 
 // Config 是 Agent 运行配置。
 type Config struct {

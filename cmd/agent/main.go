@@ -34,6 +34,9 @@ func main() {
 		log.Fatal("secret 不能为空，请用 -secret 或环境变量 PROBE_SECRET 指定")
 	}
 
+	agent.Version = version
+	agent.CleanupOldBinary()
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
