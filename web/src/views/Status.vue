@@ -104,6 +104,10 @@ function osLine(s) {
 function cpuCores(s) {
   return s.host ? cpuSummary(s.host.cpu).cores : 0
 }
+// 列表列里空间紧凑，速度去掉数字和单位间的空格
+function spd(v) {
+  return fmtSpeed(v).replace(' ', '')
+}
 
 function tagStyle(t) {
   const c = tagColor(t)
@@ -263,57 +267,47 @@ const typeLabel = { ping: 'Ping', tcping: 'TCP', http_get: 'HTTP' }
             </template>
           </div>
 
-          <!-- 列表视图：长条行，点击展开详情 -->
-          <div v-else class="card list-wrap">
-            <div class="srv-row srv-head muted">
-              <div>名称</div>
-              <div class="hide-sm">系统</div>
-              <div>CPU</div>
-              <div>内存</div>
-              <div class="hide-sm">磁盘</div>
-              <div class="hide-sm">网络</div>
-              <div class="hide-sm">运行</div>
-            </div>
+          <!-- 列表视图：横条卡片，指标分列展示，点击展开详情 -->
+          <div v-else class="strip-list">
             <template v-for="s in sec.list" :key="s.id">
-              <div class="srv-row" :class="{ expanded: expandedId === s.id }" @click="toggle(s)">
-                <div class="srv-name">
+              <div class="card srv-strip" :class="{ expanded: expandedId === s.id }" @click="toggle(s)">
+                <div class="strip-head">
                   <span class="brand-dot" :style="{ background: s.online ? 'var(--green)' : 'var(--red)' }"></span>
                   <span class="srv-name-text">{{ s.name }}</span>
                   <span v-for="t in (s.tags || [])" :key="t" class="tag hide-sm" :style="tagStyle(t)">{{ t }}</span>
+                  <span v-if="s.online && s.metrics" class="strip-right muted hide-sm">{{ osLine(s) }} · 负载 {{ (s.metrics.load1 || 0).toFixed(2) }} · 运行 {{ fmtUptime(s.metrics.uptime) }}</span>
+                  <span v-else class="strip-right muted">离线</span>
                 </div>
-                <div class="muted hide-sm srv-os">{{ osLine(s) }}</div>
-                <template v-if="s.online && s.metrics">
-                  <div class="cell-bar">
-                    <span class="pct pct-cpu">{{ fmtPercent(s.metrics.cpu) }}<template v-if="cpuCores(s)"> · {{ cpuCores(s) }}核</template></span>
-                    <div class="bar" :class="barLevel(s.metrics.cpu)"><span :style="{ width: Math.min(s.metrics.cpu, 100) + '%' }"></span></div>
+                <div v-if="s.online && s.metrics" class="strip-cols">
+                  <div class="scol" :title="cpuCores(s) ? cpuCores(s) + ' 核' : ''">
+                    <span class="lbl muted">CPU</span>
+                    <span class="val">{{ fmtPercent(s.metrics.cpu) }}</span>
+                    <div class="bar mini" :class="barLevel(s.metrics.cpu)"><span :style="{ width: Math.min(s.metrics.cpu, 100) + '%' }"></span></div>
                   </div>
-                  <div class="cell-bar">
-                    <span class="pct">{{ fmtPercent(memPct(s)) }}</span>
-                    <div class="bar" :class="barLevel(memPct(s))"><span :style="{ width: Math.min(memPct(s), 100) + '%' }"></span></div>
+                  <div class="scol" :title="fmtBytes(s.metrics.mem_used) + ' / ' + fmtBytes(s.host && s.host.mem_total)">
+                    <span class="lbl muted">内存</span>
+                    <span class="val">{{ fmtPercent(memPct(s)) }}</span>
+                    <div class="bar mini" :class="barLevel(memPct(s))"><span :style="{ width: Math.min(memPct(s), 100) + '%' }"></span></div>
                   </div>
-                  <div class="cell-bar hide-sm">
-                    <span class="pct">{{ fmtPercent(diskPct(s)) }}</span>
-                    <div class="bar" :class="barLevel(diskPct(s))"><span :style="{ width: Math.min(diskPct(s), 100) + '%' }"></span></div>
+                  <div class="scol" :title="fmtBytes(s.metrics.disk_used) + ' / ' + fmtBytes(s.host && s.host.disk_total)">
+                    <span class="lbl muted">存储</span>
+                    <span class="val">{{ fmtPercent(diskPct(s)) }}</span>
+                    <div class="bar mini" :class="barLevel(diskPct(s))"><span :style="{ width: Math.min(diskPct(s), 100) + '%' }"></span></div>
                   </div>
-                  <div class="muted hide-sm srv-net">↓{{ fmtSpeed(s.metrics.net_in_speed) }} ↑{{ fmtSpeed(s.metrics.net_out_speed) }}</div>
-                  <div class="muted hide-sm">{{ fmtUptime(s.metrics.uptime) }}</div>
-                </template>
-                <template v-else>
-                  <div class="muted offline-cell">离线</div>
-                  <div></div>
-                  <div class="hide-sm"></div>
-                  <div class="hide-sm"></div>
-                  <div class="hide-sm"></div>
-                </template>
-
-                <!-- 悬浮详情：展示列表里放不下的卡片信息 -->
-                <div v-if="s.online && s.metrics && expandedId !== s.id" class="row-tip">
-                  <div class="tip-line"><span class="muted">内存</span><span>{{ fmtBytes(s.metrics.mem_used) }} / {{ fmtBytes(s.host && s.host.mem_total) }}</span></div>
-                  <div class="tip-line"><span class="muted">磁盘</span><span>{{ fmtBytes(s.metrics.disk_used) }} / {{ fmtBytes(s.host && s.host.disk_total) }}</span></div>
-                  <div class="tip-line"><span class="muted">负载</span><span>{{ (s.metrics.load1 || 0).toFixed(2) }}</span></div>
-                  <div class="tip-line" v-if="s.traffic_in || s.traffic_out"><span class="muted">月流量</span><span>↓{{ fmtBytes(s.traffic_in) }} ↑{{ fmtBytes(s.traffic_out) }}</span></div>
-                  <div class="tip-line muted tip-hint">点击行展开完整详情</div>
+                  <div class="scol">
+                    <span class="lbl muted">上传</span>
+                    <span class="val">{{ spd(s.metrics.net_out_speed) }}</span>
+                  </div>
+                  <div class="scol">
+                    <span class="lbl muted">下载</span>
+                    <span class="val">{{ spd(s.metrics.net_in_speed) }}</span>
+                  </div>
+                  <div class="scol" :title="'↓' + fmtBytes(s.traffic_in) + ' ↑' + fmtBytes(s.traffic_out)">
+                    <span class="lbl muted">月流量</span>
+                    <span class="val">{{ fmtBytes((s.traffic_in || 0) + (s.traffic_out || 0)) }}</span>
+                  </div>
                 </div>
+                <div v-else class="offline-line muted">暂无实时数据</div>
               </div>
               <ServerDetail v-if="expandedId === s.id" :server="s" class="row-detail" @click.stop />
             </template>
@@ -515,49 +509,70 @@ const typeLabel = { ping: 'Ping', tcping: 'TCP', http_get: 'HTTP' }
   border-color: var(--card-border-hover);
 }
 
-/* 列表视图 */
-.list-wrap {
-  padding: 4px 8px;
+/* 列表视图：横条卡片 */
+.strip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-.srv-row {
-  display: grid;
-  grid-template-columns: 1.3fr 1fr 1fr 1fr 1fr 1.1fr 0.7fr;
-  gap: 12px;
-  align-items: center;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
+.srv-strip {
+  padding: 12px 16px;
   cursor: pointer;
-  border-radius: 6px;
-  font-size: 13.5px;
-  transition: background 0.1s;
-  position: relative;
+  transition: border-color 0.15s;
 }
-.srv-row:hover {
-  background: var(--hover);
+.srv-strip:hover,
+.srv-strip.expanded {
+  border-color: var(--card-border-hover);
 }
-.srv-row.srv-head {
-  cursor: default;
-  font-size: 12.5px;
-  border-bottom: 1px solid var(--border);
-}
-.srv-row.srv-head:hover {
-  background: transparent;
-}
-.srv-row.expanded {
-  background: var(--hover);
-}
-.srv-name {
+.strip-head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-weight: 500;
+  gap: 8px;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
 }
 .srv-name-text {
+  font-weight: 600;
+  font-size: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.strip-right {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.strip-cols {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.scol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.scol .lbl {
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.scol .val {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.scol .bar.mini {
+  height: 4px;
+  margin-top: 2px;
+}
+.offline-line {
+  font-size: 12.5px;
+  margin-top: 8px;
 }
 
 /* 密码锁 */
@@ -592,82 +607,23 @@ const typeLabel = { ping: 'Ping', tcping: 'TCP', http_get: 'HTTP' }
   font-size: 13px;
   margin-bottom: 10px;
 }
-.srv-os,
-.srv-net {
-  font-size: 12.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.cell-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.cell-bar .pct {
-  font-size: 12px;
-  width: 44px;
-  flex-shrink: 0;
-  text-align: right;
-}
-/* CPU 列带核心数，比纯百分比宽 */
-.cell-bar .pct-cpu {
-  width: auto;
-  min-width: 44px;
-  white-space: nowrap;
-}
-.cell-bar .bar {
-  flex: 1;
-}
-.offline-cell {
-  font-size: 12.5px;
-}
 .row-detail {
-  margin: 8px 4px 12px;
+  margin: -2px 0 4px;
   border-radius: var(--radius);
 }
 
-/* 列表行悬浮详情 */
-.row-tip {
-  display: none;
-  position: absolute;
-  top: calc(100% - 2px);
-  left: 32px;
-  z-index: 60;
-  width: 250px;
-  padding: 12px 14px;
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
-  pointer-events: none;
-}
-.srv-row:hover .row-tip {
-  display: block;
-}
-.tip-line {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12.5px;
-  margin: 3px 0;
-}
-.tip-hint {
-  justify-content: center;
-  margin-top: 8px;
-  font-size: 11.5px;
-}
-@media (hover: none) {
-  .srv-row:hover .row-tip {
-    display: none; /* 触屏设备没有悬浮，避免点击时闪现 */
-  }
-}
-
 @media (max-width: 760px) {
-  .srv-row {
-    grid-template-columns: 1.2fr 1fr 1fr;
-  }
   .hide-sm {
     display: none;
+  }
+  .srv-strip {
+    padding: 11px 12px;
+  }
+  .strip-cols {
+    gap: 8px;
+  }
+  .scol .val {
+    font-size: 12px;
   }
 }
 </style>
