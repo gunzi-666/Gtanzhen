@@ -187,9 +187,9 @@ func overview(st *store.Store, h *hub.Hub) string {
 		netIn, netOut       uint64 // 实时速率总和 B/s
 		trafIn, trafOut     uint64 // 本月流量总和
 	)
-	ym := time.Now().Format("2006-01")
+	now := time.Now()
 	for _, s := range servers {
-		in, out := st.TrafficMonth(s.ID, ym)
+		in, out := st.TrafficMonth(s.ID, store.TrafficPeriodKey(now, s.ResetDay))
 		trafIn += in
 		trafOut += out
 

@@ -23,7 +23,29 @@ type Server struct {
 	LastIP    string   `json:"last_ip"`    // Agent 最近一次接入的来源 IP（仅管理后台可见）
 	LastIPv4  string   `json:"last_ipv4"`  // Agent 自测的公网 IPv4
 	LastIPv6  string   `json:"last_ipv6"`  // Agent 自测的公网 IPv6
+	ResetDay  int      `json:"reset_day"`  // 流量重置日（1-28），默认 1 号
 	CreatedAt int64    `json:"created_at"`
+}
+
+// ClampResetDay 把流量重置日规整到 1-28。
+func ClampResetDay(d int) int {
+	if d < 1 {
+		return 1
+	}
+	if d > 28 {
+		return 28
+	}
+	return d
+}
+
+// TrafficPeriodKey 返回按重置日划分的当前计费周期键（周期起始月，YYYY-MM）。
+// 例如重置日 5：7 月 5 日 ~ 8 月 4 日 都归入 "2026-07"。
+func TrafficPeriodKey(now time.Time, resetDay int) string {
+	resetDay = ClampResetDay(resetDay)
+	if now.Day() >= resetDay {
+		return now.Format("2006-01")
+	}
+	return now.AddDate(0, -1, 0).Format("2006-01")
 }
 
 // joinTags / splitTags 在 []string 与 DB 逗号分隔文本之间转换。
@@ -112,7 +134,7 @@ func (s *Store) CreateServer(name, note string) (*Server, error) {
 
 // ListServers 返回所有服务器（按 sort_order, id）。
 func (s *Store) ListServers() ([]Server, error) {
-	rows, err := s.db.Query(`SELECT id,name,secret,sort_order,hidden,note,expires_at,tags,grp,last_ip,last_ipv4,last_ipv6,created_at FROM servers ORDER BY sort_order, id`)
+	rows, err := s.db.Query(`SELECT id,name,secret,sort_order,hidden,note,expires_at,tags,grp,last_ip,last_ipv4,last_ipv6,reset_day,created_at FROM servers ORDER BY sort_order, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +144,7 @@ func (s *Store) ListServers() ([]Server, error) {
 		var srv Server
 		var hidden int
 		var tags string
-		if err := rows.Scan(&srv.ID, &srv.Name, &srv.Secret, &srv.SortOrder, &hidden, &srv.Note, &srv.ExpiresAt, &tags, &srv.Group, &srv.LastIP, &srv.LastIPv4, &srv.LastIPv6, &srv.CreatedAt); err != nil {
+		if err := rows.Scan(&srv.ID, &srv.Name, &srv.Secret, &srv.SortOrder, &hidden, &srv.Note, &srv.ExpiresAt, &tags, &srv.Group, &srv.LastIP, &srv.LastIPv4, &srv.LastIPv6, &srv.ResetDay, &srv.CreatedAt); err != nil {
 			return nil, err
 		}
 		srv.Hidden = hidden == 1
@@ -132,15 +154,15 @@ func (s *Store) ListServers() ([]Server, error) {
 	return out, rows.Err()
 }
 
-// UpdateServer 更新名称、备注、排序、隐藏、到期时间、标签、分组。
-func (s *Store) UpdateServer(id uint64, name, note string, sortOrder int, hidden bool, expiresAt int64, tags []string, group string) error {
+// UpdateServer 更新名称、备注、排序、隐藏、到期时间、标签、分组、流量重置日。
+func (s *Store) UpdateServer(id uint64, name, note string, sortOrder int, hidden bool, expiresAt int64, tags []string, group string, resetDay int) error {
 	h := 0
 	if hidden {
 		h = 1
 	}
 	res, err := s.db.Exec(
-		`UPDATE servers SET name=?, note=?, sort_order=?, hidden=?, expires_at=?, tags=?, grp=? WHERE id=?`,
-		name, note, sortOrder, h, expiresAt, joinTags(tags), strings.TrimSpace(group), id,
+		`UPDATE servers SET name=?, note=?, sort_order=?, hidden=?, expires_at=?, tags=?, grp=?, reset_day=? WHERE id=?`,
+		name, note, sortOrder, h, expiresAt, joinTags(tags), strings.TrimSpace(group), ClampResetDay(resetDay), id,
 	)
 	if err != nil {
 		return err

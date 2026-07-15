@@ -85,14 +85,20 @@ func (a *Aggregator) FlushAll() {
 	}
 }
 
-// updateTraffic 累计月流量，处理 Agent 重启导致的计数器回退。
+// updateTraffic 累计计费周期流量（按每台服务器的重置日划分周期），
+// 处理 Agent 重启导致的计数器回退。
 func (a *Aggregator) updateTraffic(serverID, curIn, curOut uint64) {
-	ym := time.Now().Format("2006-01")
 	tx, err := a.store.db.Begin()
 	if err != nil {
 		return
 	}
 	defer tx.Rollback()
+
+	var resetDay int
+	if err := tx.QueryRow(`SELECT reset_day FROM servers WHERE id=?`, serverID).Scan(&resetDay); err != nil {
+		resetDay = 1
+	}
+	ym := TrafficPeriodKey(time.Now(), resetDay)
 
 	var inBytes, outBytes, lastIn, lastOut uint64
 	row := tx.QueryRow(`SELECT in_bytes,out_bytes,last_in,last_out FROM traffic_monthly WHERE server_id=? AND year_month=?`, serverID, ym)

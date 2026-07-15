@@ -43,6 +43,8 @@ onMounted(loadHistory)
       <div><span class="muted">运行</span><b>{{ fmtUptime(server.metrics.uptime) }}</b></div>
       <div><span class="muted">进程</span><b>{{ server.metrics.process_count }}</b></div>
       <div><span class="muted">TCP</span><b>{{ server.metrics.tcp_conn_count }}</b></div>
+      <div><span class="muted">负载</span><b>{{ (server.metrics.load1 || 0).toFixed(2) }}</b></div>
+      <div><span class="muted">月流量</span><b>↓{{ fmtBytes(server.traffic_in) }} ↑{{ fmtBytes(server.traffic_out) }}</b></div>
     </div>
 
     <div class="chart-controls">

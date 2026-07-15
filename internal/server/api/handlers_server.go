@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"probe/internal/server/store"
 )
 
 // firstNonEmpty 返回第一个非空字符串。
@@ -93,13 +95,14 @@ func (a *API) publicServers() ([]publicServer, error) {
 			}
 		}
 	}
-	ym := time.Now().Format("2006-01")
+	now := time.Now()
 	out := make([]publicServer, 0, len(servers))
 	for _, srv := range servers {
 		if srv.Hidden {
 			continue
 		}
-		inB, outB := a.deps.Store.TrafficMonth(srv.ID, ym)
+		// 每台服务器按自己的流量重置日取当前计费周期。
+		inB, outB := a.deps.Store.TrafficMonth(srv.ID, store.TrafficPeriodKey(now, srv.ResetDay))
 		out = append(out, publicServer{
 			ID:         srv.ID,
 			Name:       srv.Name,
@@ -191,6 +194,7 @@ func (a *API) handleServers(w http.ResponseWriter, r *http.Request) {
 			ExpiresAt    int64    `json:"expires_at"`
 			Tags         []string `json:"tags"`
 			Group        string   `json:"group"`
+			ResetDay     int      `json:"reset_day"`
 			CreatedAt    int64    `json:"created_at"`
 		}
 		out := make([]row, 0, len(servers))
@@ -207,7 +211,7 @@ func (a *API) handleServers(w http.ResponseWriter, r *http.Request) {
 					v6 = firstNonEmpty(v6, src)
 				}
 			}
-			out = append(out, row{s.ID, s.Name, s.Secret, s.Note, s.SortOrder, s.Hidden, online[s.ID], version[s.ID], v4, v6, s.ExpiresAt, s.Tags, s.Group, s.CreatedAt})
+			out = append(out, row{s.ID, s.Name, s.Secret, s.Note, s.SortOrder, s.Hidden, online[s.ID], version[s.ID], v4, v6, s.ExpiresAt, s.Tags, s.Group, s.ResetDay, s.CreatedAt})
 		}
 		writeJSON(w, http.StatusOK, out)
 	case http.MethodPost:
@@ -258,12 +262,13 @@ func (a *API) handleServerItem(w http.ResponseWriter, r *http.Request) {
 			ExpiresAt int64    `json:"expires_at"`
 			Tags      []string `json:"tags"`
 			Group     string   `json:"group"`
+			ResetDay  int      `json:"reset_day"`
 		}
 		if err := readJSON(r, &body); err != nil {
 			writeError(w, http.StatusBadRequest, "bad request")
 			return
 		}
-		if err := a.deps.Store.UpdateServer(id, body.Name, body.Note, body.SortOrder, body.Hidden, body.ExpiresAt, body.Tags, body.Group); err != nil {
+		if err := a.deps.Store.UpdateServer(id, body.Name, body.Note, body.SortOrder, body.Hidden, body.ExpiresAt, body.Tags, body.Group, body.ResetDay); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}

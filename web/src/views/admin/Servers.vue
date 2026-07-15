@@ -8,7 +8,7 @@ import { confirmDialog } from '../../dialog'
 const servers = ref([])
 const showModal = ref(false)
 const editing = ref(null)
-const form = ref({ name: '', note: '', sort_order: 0, hidden: false, expire_date: '', tags_text: '', group: '' })
+const form = ref({ name: '', note: '', sort_order: 0, hidden: false, expire_date: '', tags_text: '', group: '', reset_day: 1 })
 
 function tagStyle(t) {
   const c = tagColor(t)
@@ -111,7 +111,7 @@ function expiryInfo(s) {
 
 function openCreate() {
   editing.value = null
-  form.value = { name: '', note: '', sort_order: 0, hidden: false, expire_date: '', tags_text: '', group: '' }
+  form.value = { name: '', note: '', sort_order: 0, hidden: false, expire_date: '', tags_text: '', group: '', reset_day: 1 }
   showModal.value = true
 }
 function openEdit(s) {
@@ -121,6 +121,7 @@ function openEdit(s) {
     expire_date: tsToDate(s.expires_at),
     tags_text: (s.tags || []).join(', '),
     group: s.group || '',
+    reset_day: s.reset_day || 1,
   }
   showModal.value = true
 }
@@ -136,6 +137,7 @@ async function save() {
       expires_at: dateToTs(form.value.expire_date),
       tags: parseTags(form.value.tags_text),
       group: form.value.group.trim(),
+      reset_day: Math.min(28, Math.max(1, Number(form.value.reset_day) || 1)),
     })
   } else {
     await api.post('/api/admin/servers', { name: form.value.name, note: form.value.note })
@@ -297,6 +299,10 @@ onMounted(load)
           <div class="form-row">
             <label>到期时间（留空 = 不设置，用于到期提醒）</label>
             <input v-model="form.expire_date" type="date" />
+          </div>
+          <div class="form-row">
+            <label>流量重置日（1-28，每月这一天起重新累计月流量，对应商家账单日）</label>
+            <input v-model.number="form.reset_day" type="number" min="1" max="28" />
           </div>
           <div class="form-row">
             <label>排序值（越小越靠前）</label>
