@@ -46,7 +46,8 @@ function render() {
     backgroundColor: 'transparent',
     tooltip: { trigger: 'axis', valueFormatter: yFmt },
     legend: { show: props.metric === 'net', textStyle: { color: dim } },
-    grid: { left: 60, right: 20, top: 30, bottom: 30 },
+    // containLabel：网速等长标签（如 356.8 MB/s）按实际宽度自动留边，不被裁切。
+    grid: { left: 8, right: 20, top: 30, bottom: 10, containLabel: true },
     xAxis: { type: 'category', data: times, axisLine: { lineStyle: { color: line } }, axisLabel: { color: dim } },
     yAxis: { type: 'value', axisLabel: { color: dim, formatter: yFmt }, splitLine: { lineStyle: { color: line } } },
     series,

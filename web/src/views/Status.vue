@@ -30,6 +30,34 @@ const lockError = ref('')
 
 const onlineCount = computed(() => servers.value.filter((s) => s.online).length)
 
+// 顶部汇总卡片：台数、在线率、实时总网速、当月总流量。
+const summary = computed(() => {
+  let inSpeed = 0
+  let outSpeed = 0
+  let trafficIn = 0
+  let trafficOut = 0
+  for (const s of servers.value) {
+    trafficIn += s.traffic_in || 0
+    trafficOut += s.traffic_out || 0
+    if (s.online && s.metrics) {
+      inSpeed += s.metrics.net_in_speed || 0
+      outSpeed += s.metrics.net_out_speed || 0
+    }
+  }
+  const total = servers.value.length
+  const online = onlineCount.value
+  return {
+    total,
+    online,
+    offline: total - online,
+    rate: total ? Math.round((online / total) * 100) : 0,
+    inSpeed,
+    outSpeed,
+    trafficIn,
+    trafficOut,
+  }
+})
+
 // 分组：有分组时展示筛选 chips；「全部」视图按分组分节显示。
 const groups = computed(() => {
   const out = []
@@ -188,6 +216,35 @@ const typeLabel = { ping: 'Ping', tcping: 'TCP', http_get: 'HTTP' }
       </div>
 
       <template v-else>
+        <!-- 顶部汇总 -->
+        <div class="stat-grid">
+          <div class="card stat-card">
+            <div class="stat-label muted">服务器</div>
+            <div class="stat-value">{{ summary.total }}<span class="stat-unit">台</span></div>
+            <div class="stat-sub muted">
+              <span class="stat-dot" style="background: var(--green)"></span>在线 {{ summary.online }}
+              <span class="stat-dot" style="background: var(--red)"></span>离线 {{ summary.offline }}
+            </div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-label muted">在线率</div>
+            <div class="stat-value">{{ summary.rate }}<span class="stat-unit">%</span></div>
+            <div class="stat-bar">
+              <i :style="{ width: summary.rate + '%' }"></i>
+            </div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-label muted">实时网速</div>
+            <div class="stat-value">↓ {{ fmtSpeed(summary.inSpeed) }}</div>
+            <div class="stat-sub muted">↑ {{ fmtSpeed(summary.outSpeed) }}</div>
+          </div>
+          <div class="card stat-card">
+            <div class="stat-label muted">当月流量</div>
+            <div class="stat-value">↓ {{ fmtBytes(summary.trafficIn) }}</div>
+            <div class="stat-sub muted">↑ {{ fmtBytes(summary.trafficOut) }}</div>
+          </div>
+        </div>
+
         <!-- 分组筛选 -->
         <div v-if="groups.length" class="group-chips">
           <button class="group-chip" :class="{ active: selectedGroup === 'all' }" @click="selectedGroup = 'all'">全部</button>
@@ -308,6 +365,71 @@ const typeLabel = { ping: 'Ping', tcping: 'TCP', http_get: 'HTTP' }
   line-height: 1.2;
 }
 
+/* 顶部汇总卡片 */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 18px;
+}
+@media (max-width: 900px) {
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+.stat-card {
+  padding: 14px 18px;
+}
+.stat-label {
+  font-size: 12.5px;
+  margin-bottom: 6px;
+}
+.stat-value {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.stat-unit {
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
+.stat-sub {
+  font-size: 12.5px;
+  margin-top: 5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.stat-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.stat-dot + .stat-dot,
+.stat-sub .stat-dot:nth-of-type(2) {
+  margin-left: 6px;
+}
+.stat-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--muted);
+  margin-top: 10px;
+  overflow: hidden;
+}
+.stat-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--green);
+  transition: width 0.4s;
+}
+
 /* 分组筛选与分节 */
 .group-chips {
   display: flex;
@@ -336,12 +458,17 @@ const typeLabel = { ping: 'Ping', tcping: 'TCP', http_get: 'HTTP' }
   margin-top: 26px;
 }
 .group-title {
-  font-size: 15px;
+  font-size: 13.5px;
   font-weight: 600;
   margin: 0 0 12px;
-  display: flex;
+  /* 做成不透明胶囊：自定义背景图（尤其浅色图配深色主题）下文字不会隐形 */
+  display: inline-flex;
   align-items: center;
   gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 14px;
 }
 .group-count {
   font-size: 12px;
