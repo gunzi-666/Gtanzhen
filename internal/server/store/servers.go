@@ -21,6 +21,8 @@ type Server struct {
 	Tags      []string `json:"tags"`       // 个性标签，DB 内以逗号分隔存储
 	Group     string   `json:"group"`      // 分组名，空表示未分组（DB 列名 grp，避开保留字）
 	LastIP    string   `json:"last_ip"`    // Agent 最近一次接入的来源 IP（仅管理后台可见）
+	LastIPv4  string   `json:"last_ipv4"`  // Agent 自测的公网 IPv4
+	LastIPv6  string   `json:"last_ipv6"`  // Agent 自测的公网 IPv6
 	CreatedAt int64    `json:"created_at"`
 }
 
@@ -67,6 +69,19 @@ func (s *Store) SaveLastIP(id uint64, ip string) error {
 	return err
 }
 
+// SaveHostIPs 记录 Agent 自测的公网 IPv4/IPv6，空串不覆盖已有值
+// （某次探测失败不应清掉之前记录的地址）。
+func (s *Store) SaveHostIPs(id uint64, ipv4, ipv6 string) error {
+	_, err := s.db.Exec(
+		`UPDATE servers SET
+			last_ipv4 = CASE WHEN ?<>'' THEN ? ELSE last_ipv4 END,
+			last_ipv6 = CASE WHEN ?<>'' THEN ? ELSE last_ipv6 END
+		WHERE id=?`,
+		ipv4, ipv4, ipv6, ipv6, id,
+	)
+	return err
+}
+
 // genSecret 生成随机 secret。
 func genSecret() string {
 	b := make([]byte, 20)
@@ -97,7 +112,7 @@ func (s *Store) CreateServer(name, note string) (*Server, error) {
 
 // ListServers 返回所有服务器（按 sort_order, id）。
 func (s *Store) ListServers() ([]Server, error) {
-	rows, err := s.db.Query(`SELECT id,name,secret,sort_order,hidden,note,expires_at,tags,grp,last_ip,created_at FROM servers ORDER BY sort_order, id`)
+	rows, err := s.db.Query(`SELECT id,name,secret,sort_order,hidden,note,expires_at,tags,grp,last_ip,last_ipv4,last_ipv6,created_at FROM servers ORDER BY sort_order, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +122,7 @@ func (s *Store) ListServers() ([]Server, error) {
 		var srv Server
 		var hidden int
 		var tags string
-		if err := rows.Scan(&srv.ID, &srv.Name, &srv.Secret, &srv.SortOrder, &hidden, &srv.Note, &srv.ExpiresAt, &tags, &srv.Group, &srv.LastIP, &srv.CreatedAt); err != nil {
+		if err := rows.Scan(&srv.ID, &srv.Name, &srv.Secret, &srv.SortOrder, &hidden, &srv.Note, &srv.ExpiresAt, &tags, &srv.Group, &srv.LastIP, &srv.LastIPv4, &srv.LastIPv6, &srv.CreatedAt); err != nil {
 			return nil, err
 		}
 		srv.Hidden = hidden == 1

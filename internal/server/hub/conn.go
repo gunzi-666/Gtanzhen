@@ -187,10 +187,13 @@ func (h *Hub) touch(id uint64) {
 
 func (h *Hub) setHost(id uint64, hi *protocol.HostInfo) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	if s, ok := h.states[id]; ok {
 		s.Host = hi
 		s.LastSeen = time.Now()
+	}
+	h.mu.Unlock()
+	if h.onHostIP != nil && (hi.IPv4 != "" || hi.IPv6 != "") {
+		go h.onHostIP(id, hi.IPv4, hi.IPv6)
 	}
 }
 

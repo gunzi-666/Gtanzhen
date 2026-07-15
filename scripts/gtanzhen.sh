@@ -76,6 +76,21 @@ install_self() {
 
 svc_active() { systemctl is-active --quiet "$1"; }
 
+# 安全替换二进制：先下载到临时文件，成功后原子替换并重启服务。
+# 直接向运行中的二进制写入会报 Text file busy（以前第一次升级必失败的原因）。
+# 用法： upgrade_bin <bin_name> <目标路径> <服务名>
+upgrade_bin() {
+  local bin_name="$1" dest="$2" svc="$3" tmp="$2.new"
+  if download "$bin_name" "$tmp"; then
+    cp -f "$dest" "${dest}.bak" 2>/dev/null
+    mv -f "$tmp" "$dest"
+    systemctl restart "$svc"
+    return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+
 # ==== 面板操作 ====
 install_server() {
   need_root
@@ -129,13 +144,10 @@ upgrade_server() {
   need_root
   if [ ! -f "$SERVER_BIN" ]; then red "面板尚未安装"; return 1; fi
   local arch; arch=$(detect_arch)
-  cp -f "$SERVER_BIN" "${SERVER_BIN}.bak"
-  if download "probe-server-linux-${arch}" "$SERVER_BIN"; then
-    systemctl restart "$SERVER_SVC"
+  if upgrade_bin "probe-server-linux-${arch}" "$SERVER_BIN" "$SERVER_SVC"; then
     green "面板已升级并重启。旧版本备份在 ${SERVER_BIN}.bak"
   else
-    mv -f "${SERVER_BIN}.bak" "$SERVER_BIN"
-    red "升级失败，已回滚到旧版本"
+    red "升级失败，旧版本未受影响，仍在运行"
   fi
 }
 
@@ -256,11 +268,10 @@ upgrade_agent() {
       local arch; arch=$(detect_arch)
       while IFS= read -r s; do
         local d; [ "$s" = "$AGENT_SVC_DEFAULT" ] && d="$AGENT_DIR_DEFAULT" || d="/opt/${s}"
-        cp -f "${d}/probe-agent" "${d}/probe-agent.bak" 2>/dev/null
-        if download "probe-agent-linux-${arch}" "${d}/probe-agent"; then
-          systemctl restart "$s"; green "已升级 ${s}"
+        if upgrade_bin "probe-agent-linux-${arch}" "${d}/probe-agent" "$s"; then
+          green "已升级 ${s}"
         else
-          mv -f "${d}/probe-agent.bak" "${d}/probe-agent" 2>/dev/null; red "升级 ${s} 失败，已回滚"
+          red "升级 ${s} 失败，旧版本未受影响"
         fi
       done <<< "$svcs"
       return
@@ -268,13 +279,10 @@ upgrade_agent() {
     pick_agent || return 1
   fi
   local arch; arch=$(detect_arch)
-  cp -f "${PICK_DIR}/probe-agent" "${PICK_DIR}/probe-agent.bak"
-  if download "probe-agent-linux-${arch}" "${PICK_DIR}/probe-agent"; then
-    systemctl restart "$PICK_SVC"
+  if upgrade_bin "probe-agent-linux-${arch}" "${PICK_DIR}/probe-agent" "$PICK_SVC"; then
     green "${PICK_SVC} 已升级并重启。备份在 ${PICK_DIR}/probe-agent.bak"
   else
-    mv -f "${PICK_DIR}/probe-agent.bak" "${PICK_DIR}/probe-agent"
-    red "升级失败，已回滚到旧版本"
+    red "升级失败，旧版本未受影响，仍在运行"
   fi
 }
 

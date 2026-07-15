@@ -75,6 +75,10 @@ func (c *Collector) HostInfo() protocol.HostInfo {
 		info.DiskTotal = usage.Total
 	}
 
+	// 自测公网 IPv4/IPv6：连接来源地址只有一个（双栈机器通常走 v6），
+	// 两个都要就得 Agent 自己探测后上报。
+	info.IPv4, info.IPv6 = PublicIPs()
+
 	return info
 }
 

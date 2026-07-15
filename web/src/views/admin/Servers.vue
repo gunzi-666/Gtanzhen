@@ -46,7 +46,7 @@ const filtered = computed(() => {
     if (filterStatus.value === 'online' && !s.online) return false
     if (filterStatus.value === 'offline' && s.online) return false
     if (kw) {
-      const hay = [s.name, s.ip, s.note, s.group, ...(s.tags || [])].join(' ').toLowerCase()
+      const hay = [s.name, s.ipv4, s.ipv6, s.note, s.group, ...(s.tags || [])].join(' ').toLowerCase()
       if (!hay.includes(kw)) return false
     }
     return true
@@ -154,8 +154,8 @@ async function copySecret(s) {
   await copyWithToast(s.secret, 'secret 已复制')
 }
 
-async function copyIP(s) {
-  if (s.ip) await copyWithToast(s.ip, 'IP 已复制')
+async function copyIP(ip) {
+  if (ip) await copyWithToast(ip, 'IP 已复制')
 }
 
 // Agent 升级：下发后 Agent 下载最新版替换自身并重启，期间会短暂离线。
@@ -223,8 +223,11 @@ onMounted(load)
               <span v-else class="muted">-</span>
             </td>
             <td>
-              <code v-if="s.ip" class="ip" title="点击复制" @click="copyIP(s)">{{ s.ip }}</code>
-              <span v-else class="muted" title="Agent 尚未连接过，暂无来源 IP">-</span>
+              <div v-if="s.ipv4 || s.ipv6" class="ip-cell">
+                <code v-if="s.ipv4" class="ip" title="点击复制" @click="copyIP(s.ipv4)">{{ s.ipv4 }}</code>
+                <code v-if="s.ipv6" class="ip v6" title="点击复制" @click="copyIP(s.ipv6)">{{ s.ipv6 }}</code>
+              </div>
+              <span v-else class="muted" title="Agent 尚未连接过，暂无 IP">-</span>
             </td>
             <td>
               <span class="badge" :class="s.online ? 'online' : 'offline'">{{ s.online ? '在线' : '离线' }}</span>
@@ -317,10 +320,19 @@ onMounted(load)
   font-family: monospace;
   margin-right: 8px;
 }
+.ip-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
 .ip {
   font-family: monospace;
   font-size: 12.5px;
   cursor: pointer;
+}
+.ip.v6 {
+  font-size: 11.5px;
+  opacity: 0.75;
 }
 .ip:hover {
   text-decoration: underline;

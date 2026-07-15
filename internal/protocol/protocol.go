@@ -76,6 +76,8 @@ type HostInfo struct {
 	DiskTotal       uint64   `json:"disk_total"`
 	BootTime        uint64   `json:"boot_time"` // Unix 秒
 	CountryCode     string   `json:"country_code,omitempty"`
+	IPv4            string   `json:"ipv4,omitempty"` // Agent 自测的公网 IPv4
+	IPv6            string   `json:"ipv6,omitempty"` // Agent 自测的公网 IPv6
 }
 
 // Metrics 动态运行时指标。

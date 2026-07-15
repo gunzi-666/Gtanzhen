@@ -54,6 +54,8 @@ func (s *Store) migrate() error {
 			grp          TEXT NOT NULL DEFAULT '',
 			last_online_at INTEGER NOT NULL DEFAULT 0,
 			last_ip      TEXT NOT NULL DEFAULT '',
+			last_ipv4    TEXT NOT NULL DEFAULT '',
+			last_ipv6    TEXT NOT NULL DEFAULT '',
 			created_at   INTEGER NOT NULL
 		)`,
 		`CREATE TABLE IF NOT EXISTS metrics_minute (
@@ -169,5 +171,7 @@ func (s *Store) migrate() error {
 	_, _ = s.db.Exec(`ALTER TABLE servers ADD COLUMN grp TEXT NOT NULL DEFAULT ''`)
 	_, _ = s.db.Exec(`ALTER TABLE servers ADD COLUMN last_online_at INTEGER NOT NULL DEFAULT 0`)
 	_, _ = s.db.Exec(`ALTER TABLE servers ADD COLUMN last_ip TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE servers ADD COLUMN last_ipv4 TEXT NOT NULL DEFAULT ''`)
+	_, _ = s.db.Exec(`ALTER TABLE servers ADD COLUMN last_ipv6 TEXT NOT NULL DEFAULT ''`)
 	return nil
 }

@@ -2,11 +2,22 @@ package api
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// firstNonEmpty 返回第一个非空字符串。
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
 
 // publicHost 是对公开状态页暴露的主机信息子集。
 // 刻意不包含 hostname、内核版本、系统小版本、虚拟化等敏感/无用细节。
@@ -155,10 +166,16 @@ func (a *API) handleServers(w http.ResponseWriter, r *http.Request) {
 		online := map[uint64]bool{}
 		version := map[uint64]string{}
 		liveIP := map[uint64]string{}
+		liveV4 := map[uint64]string{}
+		liveV6 := map[uint64]string{}
 		for _, st := range a.deps.Hub.Snapshot() {
 			online[st.ServerID] = st.Online
 			version[st.ServerID] = st.AgentVersion
 			liveIP[st.ServerID] = st.IP
+			if st.Host != nil {
+				liveV4[st.ServerID] = st.Host.IPv4
+				liveV6[st.ServerID] = st.Host.IPv6
+			}
 		}
 		type row struct {
 			ID           uint64   `json:"id"`
@@ -169,7 +186,8 @@ func (a *API) handleServers(w http.ResponseWriter, r *http.Request) {
 			Hidden       bool     `json:"hidden"`
 			Online       bool     `json:"online"`
 			AgentVersion string   `json:"agent_version"`
-			IP           string   `json:"ip"`
+			IPv4         string   `json:"ipv4"`
+			IPv6         string   `json:"ipv6"`
 			ExpiresAt    int64    `json:"expires_at"`
 			Tags         []string `json:"tags"`
 			Group        string   `json:"group"`
@@ -177,11 +195,19 @@ func (a *API) handleServers(w http.ResponseWriter, r *http.Request) {
 		}
 		out := make([]row, 0, len(servers))
 		for _, s := range servers {
-			ip := liveIP[s.ID]
-			if ip == "" {
-				ip = s.LastIP
+			// 优先 Agent 自测的公网地址（实时 → 持久化），
+			// 都没有时用连接来源地址按协议族兜底（老版本 Agent 不上报自测 IP）。
+			v4 := firstNonEmpty(liveV4[s.ID], s.LastIPv4)
+			v6 := firstNonEmpty(liveV6[s.ID], s.LastIPv6)
+			src := firstNonEmpty(liveIP[s.ID], s.LastIP)
+			if parsed := net.ParseIP(src); parsed != nil {
+				if parsed.To4() != nil {
+					v4 = firstNonEmpty(v4, src)
+				} else {
+					v6 = firstNonEmpty(v6, src)
+				}
 			}
-			out = append(out, row{s.ID, s.Name, s.Secret, s.Note, s.SortOrder, s.Hidden, online[s.ID], version[s.ID], ip, s.ExpiresAt, s.Tags, s.Group, s.CreatedAt})
+			out = append(out, row{s.ID, s.Name, s.Secret, s.Note, s.SortOrder, s.Hidden, online[s.ID], version[s.ID], v4, v6, s.ExpiresAt, s.Tags, s.Group, s.CreatedAt})
 		}
 		writeJSON(w, http.StatusOK, out)
 	case http.MethodPost:

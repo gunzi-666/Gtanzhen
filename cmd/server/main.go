@@ -73,6 +73,10 @@ func main() {
 		// 每次接入都持久化来源 IP，离线/面板重启后后台仍能看到。
 		_ = st.SaveLastIP(serverID, ip)
 	})
+	h.SetHostIPHandler(func(serverID uint64, ipv4, ipv6 string) {
+		// 持久化 Agent 自测的公网 IPv4/IPv6（双栈机器两个都记录）。
+		_ = st.SaveHostIPs(serverID, ipv4, ipv6)
+	})
 
 	// 任务管理器：下发探测/命令并回收结果。
 	tm := task.NewManager(h, st.SecretOf)
