@@ -69,6 +69,10 @@ func main() {
 		}
 		engine.OnOnline(serverID, false)
 	})
+	h.SetConnectHandler(func(serverID uint64, ip string) {
+		// 每次接入都持久化来源 IP，离线/面板重启后后台仍能看到。
+		_ = st.SaveLastIP(serverID, ip)
+	})
 
 	// 任务管理器：下发探测/命令并回收结果。
 	tm := task.NewManager(h, st.SecretOf)

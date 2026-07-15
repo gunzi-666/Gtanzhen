@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { api } from '../../api'
 import { fmtTime, tagColor } from '../../format'
 import { copyWithToast, toast } from '../../clipboard'
@@ -23,6 +23,35 @@ function parseTags(text) {
 const settings = ref({ github_repo: '', public_ws_url: '', agent_name: '' })
 // 最新 Agent 版本（来自 GitHub Release），已是最新的机器不显示升级按钮。
 const latestVersion = ref('')
+
+// 筛选条件：分组 / 在线状态 / 关键字（名称、IP、备注、标签）。
+const filterGroup = ref('__all__')
+const filterStatus = ref('all')
+const keyword = ref('')
+
+// 现有分组列表（去重、保持出现顺序）。
+const groups = computed(() => {
+  const seen = []
+  for (const s of servers.value) {
+    if (s.group && !seen.includes(s.group)) seen.push(s.group)
+  }
+  return seen
+})
+
+const filtered = computed(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  return servers.value.filter((s) => {
+    if (filterGroup.value === '__none__' && s.group) return false
+    if (filterGroup.value !== '__all__' && filterGroup.value !== '__none__' && s.group !== filterGroup.value) return false
+    if (filterStatus.value === 'online' && !s.online) return false
+    if (filterStatus.value === 'offline' && s.online) return false
+    if (kw) {
+      const hay = [s.name, s.ip, s.note, s.group, ...(s.tags || [])].join(' ').toLowerCase()
+      if (!hay.includes(kw)) return false
+    }
+    return true
+  })
+})
 
 async function load() {
   ;[servers.value, settings.value] = await Promise.all([
@@ -125,6 +154,10 @@ async function copySecret(s) {
   await copyWithToast(s.secret, 'secret 已复制')
 }
 
+async function copyIP(s) {
+  if (s.ip) await copyWithToast(s.ip, 'IP 已复制')
+}
+
 // Agent 升级：下发后 Agent 下载最新版替换自身并重启，期间会短暂离线。
 const upgradingId = ref(0)
 async function upgradeAgent(s) {
@@ -155,21 +188,43 @@ onMounted(load)
       </div>
     </div>
 
+    <div class="filter-bar card">
+      <select v-model="filterGroup">
+        <option value="__all__">全部分组</option>
+        <option value="__none__">未分组</option>
+        <option v-for="g in groups" :key="g" :value="g">{{ g }}</option>
+      </select>
+      <select v-model="filterStatus">
+        <option value="all">全部状态</option>
+        <option value="online">仅在线</option>
+        <option value="offline">仅离线</option>
+      </select>
+      <input v-model="keyword" class="search" placeholder="搜索名称 / IP / 备注 / 标签" />
+      <span class="muted count">{{ filtered.length }} / {{ servers.length }} 台</span>
+    </div>
+
     <div class="card table-card">
       <table>
         <thead>
           <tr>
-            <th>ID</th><th>名称</th><th>状态</th><th>版本</th><th>到期</th><th>备注</th><th>Secret</th><th>创建时间</th><th></th>
+            <th>ID</th><th>名称</th><th>分组</th><th>IP</th><th>状态</th><th>版本</th><th>到期</th><th>备注</th><th>Secret</th><th></th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="s in servers" :key="s.id">
-            <td class="muted">{{ s.id }}</td>
+          <tr v-for="s in filtered" :key="s.id">
+            <td class="muted" :title="'创建于 ' + fmtTime(s.created_at)">{{ s.id }}</td>
             <td>
               {{ s.name }}
-              <span v-if="s.group" class="chip">{{ s.group }}</span>
               <span v-for="t in (s.tags || [])" :key="t" class="tag" :style="tagStyle(t)">{{ t }}</span>
               <span v-if="s.hidden" class="chip">隐藏</span>
+            </td>
+            <td>
+              <span v-if="s.group">{{ s.group }}</span>
+              <span v-else class="muted">-</span>
+            </td>
+            <td>
+              <code v-if="s.ip" class="ip" title="点击复制" @click="copyIP(s)">{{ s.ip }}</code>
+              <span v-else class="muted" title="Agent 尚未连接过，暂无来源 IP">-</span>
             </td>
             <td>
               <span class="badge" :class="s.online ? 'online' : 'offline'">{{ s.online ? '在线' : '离线' }}</span>
@@ -188,7 +243,6 @@ onMounted(load)
               <code class="secret">{{ s.secret.slice(0, 8) }}…</code>
               <button class="ghost small" @click="copySecret(s)">复制</button>
             </td>
-            <td class="muted">{{ fmtTime(s.created_at) }}</td>
             <td class="row-actions">
               <button class="ghost small" @click="copyCmd(s)">一键命令</button>
               <button v-if="!isLatest(s)" class="ghost small" :disabled="!s.online || upgradingId === s.id" @click="upgradeAgent(s)">
@@ -198,7 +252,8 @@ onMounted(load)
               <button class="danger small" @click="remove(s)">删除</button>
             </td>
           </tr>
-          <tr v-if="servers.length === 0"><td colspan="9" class="muted" style="text-align:center">暂无服务器</td></tr>
+          <tr v-if="servers.length === 0"><td colspan="10" class="muted" style="text-align:center">暂无服务器</td></tr>
+          <tr v-else-if="filtered.length === 0"><td colspan="10" class="muted" style="text-align:center">没有符合筛选条件的服务器</td></tr>
         </tbody>
       </table>
     </div>
@@ -261,6 +316,34 @@ onMounted(load)
 .secret {
   font-family: monospace;
   margin-right: 8px;
+}
+.ip {
+  font-family: monospace;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.ip:hover {
+  text-decoration: underline;
+}
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.filter-bar select {
+  width: auto;
+  min-width: 120px;
+}
+.filter-bar .search {
+  flex: 1;
+  max-width: 320px;
+}
+.filter-bar .count {
+  margin-left: auto;
+  font-size: 13px;
+  white-space: nowrap;
 }
 .row-actions {
   display: flex;

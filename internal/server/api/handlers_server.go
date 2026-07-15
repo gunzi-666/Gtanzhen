@@ -151,12 +151,14 @@ func (a *API) handleServers(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		// 附带在线状态与 Agent 版本。
+		// 附带在线状态、Agent 版本与来源 IP。
 		online := map[uint64]bool{}
 		version := map[uint64]string{}
+		liveIP := map[uint64]string{}
 		for _, st := range a.deps.Hub.Snapshot() {
 			online[st.ServerID] = st.Online
 			version[st.ServerID] = st.AgentVersion
+			liveIP[st.ServerID] = st.IP
 		}
 		type row struct {
 			ID           uint64   `json:"id"`
@@ -167,6 +169,7 @@ func (a *API) handleServers(w http.ResponseWriter, r *http.Request) {
 			Hidden       bool     `json:"hidden"`
 			Online       bool     `json:"online"`
 			AgentVersion string   `json:"agent_version"`
+			IP           string   `json:"ip"`
 			ExpiresAt    int64    `json:"expires_at"`
 			Tags         []string `json:"tags"`
 			Group        string   `json:"group"`
@@ -174,7 +177,11 @@ func (a *API) handleServers(w http.ResponseWriter, r *http.Request) {
 		}
 		out := make([]row, 0, len(servers))
 		for _, s := range servers {
-			out = append(out, row{s.ID, s.Name, s.Secret, s.Note, s.SortOrder, s.Hidden, online[s.ID], version[s.ID], s.ExpiresAt, s.Tags, s.Group, s.CreatedAt})
+			ip := liveIP[s.ID]
+			if ip == "" {
+				ip = s.LastIP
+			}
+			out = append(out, row{s.ID, s.Name, s.Secret, s.Note, s.SortOrder, s.Hidden, online[s.ID], version[s.ID], ip, s.ExpiresAt, s.Tags, s.Group, s.CreatedAt})
 		}
 		writeJSON(w, http.StatusOK, out)
 	case http.MethodPost:

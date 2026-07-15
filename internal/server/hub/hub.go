@@ -15,6 +15,7 @@ type State struct {
 	Online       bool               `json:"online"`
 	LastSeen     time.Time          `json:"last_seen"`
 	AgentVersion string             `json:"agent_version,omitempty"`
+	IP           string             `json:"-"` // Agent 来源 IP，仅供管理后台，不随公开接口输出
 	Host         *protocol.HostInfo `json:"host,omitempty"`
 	Metrics      *protocol.Metrics  `json:"metrics,omitempty"`
 	connID       uint64             // 当前占用连接的自增 id，用于处理重复连接
@@ -45,9 +46,13 @@ type Hub struct {
 	onMetrics     MetricsHandler
 	onTaskResult  TaskResultHandler
 	onOnline      OnlineHandler
+	onConnect     ConnectHandler
 	reportPeriod  int
 	offlineAfter  time.Duration
 }
+
+// ConnectHandler 在每次 Agent 成功接入时回调（含重连），用于持久化来源 IP 等。
+type ConnectHandler func(serverID uint64, ip string)
 
 // OnlineHandler 处理服务器上线事件。
 // fresh 为 true 表示该机在面板内存中没有历史状态（首次连接或面板刚重启），
@@ -73,6 +78,9 @@ func (h *Hub) SetTaskResultHandler(fn TaskResultHandler) { h.onTaskResult = fn }
 
 // SetOnlineHandler 注册上线回调（离线→在线的边沿或首次连接时触发）。
 func (h *Hub) SetOnlineHandler(fn OnlineHandler) { h.onOnline = fn }
+
+// SetConnectHandler 注册接入回调（每次连接建立都触发）。
+func (h *Hub) SetConnectHandler(fn ConnectHandler) { h.onConnect = fn }
 
 // fireOnline 在异步 goroutine 中触发上线回调，调用方可持锁调用。
 func (h *Hub) fireOnline(id uint64, fresh bool) {

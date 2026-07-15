@@ -3,7 +3,9 @@ package hub
 import (
 	"encoding/json"
 	"log"
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,9 +61,10 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.register(c, name, auth.AgentVersion)
+	ip := agentIP(r)
+	h.register(c, name, auth.AgentVersion, ip)
 	defer h.unregister(c)
-	log.Printf("agent online: server_id=%d name=%s from %s", id, name, r.RemoteAddr)
+	log.Printf("agent online: server_id=%d name=%s from %s", id, name, ip)
 
 	ws.SetReadDeadline(time.Time{})
 	ws.SetReadLimit(2 << 20) // 2MB 上限，防超大消息
@@ -79,8 +82,22 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// agentIP 取 Agent 真实来源 IP：面板挂在反代后面时优先取转发头。
+func agentIP(r *http.Request) string {
+	if v := r.Header.Get("X-Forwarded-For"); v != "" {
+		return strings.TrimSpace(strings.SplitN(v, ",", 2)[0])
+	}
+	if v := r.Header.Get("X-Real-IP"); v != "" {
+		return v
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
+	}
+	return r.RemoteAddr
+}
+
 // register 登记连接与初始状态；同一服务器的旧连接会被顶替。
-func (h *Hub) register(c *conn, name, agentVersion string) {
+func (h *Hub) register(c *conn, name, agentVersion, ip string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.connSeq++
@@ -104,12 +121,16 @@ func (h *Hub) register(c *conn, name, agentVersion string) {
 	cameBack := ok && s.notifiedOffline
 	s.Name = name
 	s.AgentVersion = agentVersion
+	s.IP = ip
 	s.Online = true
 	s.LastSeen = time.Now()
 	s.connID = c.connID
 	s.notifiedOffline = false
 	if cameBack || !ok {
 		h.fireOnline(c.serverID, !ok)
+	}
+	if h.onConnect != nil {
+		go h.onConnect(c.serverID, ip)
 	}
 }
 
