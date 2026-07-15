@@ -56,8 +56,18 @@ func main() {
 	h.OfflineWatcher(func(serverID uint64) {
 		engine.OnOffline(serverID)
 	})
-	h.SetOnlineHandler(func(serverID uint64) {
-		engine.OnOnline(serverID)
+	h.SetOnlineHandler(func(serverID uint64, fresh bool) {
+		// 记录上线时间，并判断是否为该机首次上线。
+		first, err := st.MarkOnline(serverID)
+		if fresh {
+			// 内存无状态：只有确认从未上线过才通知（首次上线），
+			// 否则是面板重启后的回连，静默处理避免群发。
+			if err == nil && first {
+				engine.OnOnline(serverID, true)
+			}
+			return
+		}
+		engine.OnOnline(serverID, false)
 	})
 
 	// 任务管理器：下发探测/命令并回收结果。

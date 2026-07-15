@@ -96,8 +96,11 @@ func (h *Hub) register(c *conn, name, agentVersion string) {
 		s = &State{ServerID: c.serverID}
 		h.states[c.serverID] = s
 	}
-	// 只有发过离线告警的机器回连才触发上线回调（与离线告警对称）；
-	// 面板刚启动或快速重连（升级/网络抖动）都不算恢复上线，避免误报。
+	// 两种情况触发上线回调：
+	// 1. 发过离线告警的机器回连（恢复上线，与离线告警对称）；
+	// 2. 内存中没有该机状态（fresh）——可能是新装 Agent 首次上线，
+	//    也可能是面板重启后的回连，由上层查持久化记录区分。
+	// 快速重连（升级/网络抖动，未发过离线告警）不触发，避免打扰。
 	cameBack := ok && s.notifiedOffline
 	s.Name = name
 	s.AgentVersion = agentVersion
@@ -105,8 +108,8 @@ func (h *Hub) register(c *conn, name, agentVersion string) {
 	s.LastSeen = time.Now()
 	s.connID = c.connID
 	s.notifiedOffline = false
-	if cameBack {
-		h.fireOnline(c.serverID)
+	if cameBack || !ok {
+		h.fireOnline(c.serverID, !ok)
 	}
 }
 
@@ -153,7 +156,7 @@ func (h *Hub) touch(id uint64) {
 	defer h.mu.Unlock()
 	if s, ok := h.states[id]; ok {
 		if s.notifiedOffline {
-			h.fireOnline(id)
+			h.fireOnline(id, false)
 		}
 		s.Online = true
 		s.LastSeen = time.Now()
@@ -175,7 +178,7 @@ func (h *Hub) setMetrics(id uint64, m *protocol.Metrics) {
 	defer h.mu.Unlock()
 	if s, ok := h.states[id]; ok {
 		if s.notifiedOffline {
-			h.fireOnline(id)
+			h.fireOnline(id, false)
 		}
 		s.Metrics = m
 		s.Online = true

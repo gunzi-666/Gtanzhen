@@ -44,10 +44,15 @@ type Hub struct {
 	auth          Authenticator
 	onMetrics     MetricsHandler
 	onTaskResult  TaskResultHandler
-	onOnline      func(serverID uint64) // 服务器由离线转在线时回调
+	onOnline      OnlineHandler
 	reportPeriod  int
 	offlineAfter  time.Duration
 }
+
+// OnlineHandler 处理服务器上线事件。
+// fresh 为 true 表示该机在面板内存中没有历史状态（首次连接或面板刚重启），
+// 是否算“首次上线”由上层结合持久化记录判断。
+type OnlineHandler func(serverID uint64, fresh bool)
 
 // New 创建 Hub。
 func New(auth Authenticator, reportPeriod int) *Hub {
@@ -66,13 +71,13 @@ func (h *Hub) SetMetricsHandler(fn MetricsHandler) { h.onMetrics = fn }
 // SetTaskResultHandler 注册任务结果回调。
 func (h *Hub) SetTaskResultHandler(fn TaskResultHandler) { h.onTaskResult = fn }
 
-// SetOnlineHandler 注册上线回调（离线→在线的边沿触发）。
-func (h *Hub) SetOnlineHandler(fn func(serverID uint64)) { h.onOnline = fn }
+// SetOnlineHandler 注册上线回调（离线→在线的边沿或首次连接时触发）。
+func (h *Hub) SetOnlineHandler(fn OnlineHandler) { h.onOnline = fn }
 
 // fireOnline 在异步 goroutine 中触发上线回调，调用方可持锁调用。
-func (h *Hub) fireOnline(id uint64) {
+func (h *Hub) fireOnline(id uint64, fresh bool) {
 	if h.onOnline != nil {
-		go h.onOnline(id)
+		go h.onOnline(id, fresh)
 	}
 }
 

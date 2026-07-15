@@ -47,6 +47,19 @@ func splitTags(s string) []string {
 // ErrNotFound 表示记录不存在。
 var ErrNotFound = errors.New("not found")
 
+// MarkOnline 记录服务器本次上线时间，返回是否为该机首次上线。
+// 用于区分「新装 Agent 首次上线」与「面板重启后的全量回连」。
+func (s *Store) MarkOnline(id uint64) (first bool, err error) {
+	var last int64
+	if err := s.db.QueryRow(`SELECT last_online_at FROM servers WHERE id=?`, id).Scan(&last); err != nil {
+		return false, err
+	}
+	if _, err := s.db.Exec(`UPDATE servers SET last_online_at=? WHERE id=?`, time.Now().Unix(), id); err != nil {
+		return false, err
+	}
+	return last == 0, nil
+}
+
 // genSecret 生成随机 secret。
 func genSecret() string {
 	b := make([]byte, 20)

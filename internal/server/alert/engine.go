@@ -72,8 +72,8 @@ func (e *Engine) OnOffline(serverID uint64) {
 	}
 }
 
-// OnOnline 服务器由离线转在线时评估 online 规则。
-func (e *Engine) OnOnline(serverID uint64) {
+// OnOnline 服务器上线时评估 online 规则。first 表示该机首次上线。
+func (e *Engine) OnOnline(serverID uint64, first bool) {
 	rules, err := e.store.ListAlertRules()
 	if err != nil {
 		return
@@ -83,7 +83,11 @@ func (e *Engine) OnOnline(serverID uint64) {
 		if !r.Enabled || r.Metric != "online" || !r.Matches(serverID) {
 			continue
 		}
-		msg := fmt.Sprintf("服务器 %s 已上线", nameOr(st.Name, serverID))
+		verb := "已上线"
+		if first {
+			verb = "首次上线"
+		}
+		msg := fmt.Sprintf("服务器 %s %s", nameOr(st.Name, serverID), verb)
 		e.fire(r, serverID, "resolved", msg)
 	}
 }
