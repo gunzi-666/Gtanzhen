@@ -16,6 +16,7 @@ const routes = [
       { path: 'monitors', name: 'admin-monitors', component: () => import('./views/admin/Monitors.vue') },
       { path: 'crons', name: 'admin-crons', component: () => import('./views/admin/Crons.vue') },
       { path: 'settings', name: 'admin-settings', component: () => import('./views/admin/Settings.vue') },
+      { path: 'migration', name: 'admin-migration', component: () => import('./views/admin/Migration.vue') },
     ],
   },
 ]
